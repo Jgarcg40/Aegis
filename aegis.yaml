@@ -1,0 +1,41 @@
+image: aegis-runner:latest
+network_mode: host
+limits:
+  cpus: '4'
+  memory: 8g
+  pids: 2048
+  tmpfs_size: 4g
+timeout: 6h
+command_timeout: 10m
+models:
+  default: grok
+  grok:
+    provider: xai
+    model: grok-4.6
+    env_keys:
+    - XAI_API_KEY
+    - AEGIS_XAI_API_KEY
+  codex:
+    provider: openai
+    model: gpt-5.6-sol
+    env_keys:
+    - OPENAI_API_KEY
+    - AEGIS_OPENAI_API_KEY
+  claude:
+    provider: anthropic
+    model: sonnet
+    env_keys:
+    - ANTHROPIC_API_KEY
+    - CLAUDE_CODE_OAUTH_TOKEN
+  ollama:
+    provider: ollama
+    model: llama3.1
+    endpoint: 127.0.0.1:11434
+  vllm:
+    provider: vllm
+    model: local
+    endpoint: 127.0.0.1:8000
+data_dir: data
+serve_port_range:
+- 41000
+- 41999

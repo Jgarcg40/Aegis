@@ -1,0 +1,17 @@
+[project]
+name = "aegis"
+version = "0.1.0"
+description = "Orquestador on-premise de pentesting autorizado"
+requires-python = ">=3.12"
+dependencies = ["PyYAML>=6.0.1"]
+
+[project.scripts]
+aegis = "aegis_cli:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["internal", "internal.run", "internal.sandbox", "internal.telemetry", "internal.report"]
+py-modules = ["aegis_cli"]

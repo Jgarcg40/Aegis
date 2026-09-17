@@ -1,0 +1,29 @@
+# Sidecar supervisado para un run vivo.
+# En este host la web ya corre en el bus de usuario (~/.config/systemd/user/).
+# Instalar ahí (sin root):
+#   cp contrib/systemd/aegis-watch@.service ~/.config/systemd/user/
+#   # quitar User= si copias esta unidad de sistema tal cual
+#   systemctl --user daemon-reload
+#   systemctl --user start aegis-watch@YYYYMMDD-HHMMSS-abcdef
+# Sistema (hace falta sudo):
+#   sudo cp contrib/systemd/aegis-watch@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now aegis-watch@YYYYMMDD-HHMMSS-abcdef
+# Ajustar User, WorkingDirectory y ExecStart a tu instalación.
+
+[Unit]
+Description=Aegis watch sidecar (%i)
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=aegis
+WorkingDirectory=/home/aegis/aegis
+ExecStart=/home/aegis/aegis/aegis watch --supervise %i
+Restart=on-failure
+RestartSec=8
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,29 @@
+# BFF de la UI on-premise (bus de usuario).
+# El instalador copia esto a ~/.config/systemd/user/aegis-web.service
+# sustituyendo {{AEGIS_ROOT}}, {{PYTHON}}, {{AEGIS_WEB_HOST}} y {{AEGIS_WEB_PORT}}.
+# ExecStart real lo escribe write_web_unit: wrapper + python + aegis-web.
+# El wrapper (aegis-web-exec.sh) entra en el grupo docker si el usuario
+# ya está en /etc/group pero esta sesión de systemd --user no (linger).
+#
+#   systemctl --user enable --now aegis-web.service
+#   loginctl enable-linger $USER   # sobrevive al logout
+#
+# Solo mata el BFF. KillMode=process evita que un restart de la web
+# tumbe un `aegis run` vivo (conciencia, sidecar, stats).
+
+[Unit]
+Description=Aegis web BFF
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory={{AEGIS_ROOT}}
+Environment=PATH=%h/.opencode/bin:%h/.local/bin:%h/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart={{PYTHON}} "{{AEGIS_ROOT}}/aegis-web" --host {{AEGIS_WEB_HOST}} --port {{AEGIS_WEB_PORT}}
+Restart=always
+RestartSec=3
+KillMode=process
+
+[Install]
+WantedBy=default.target

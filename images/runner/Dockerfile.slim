@@ -1,0 +1,31 @@
+# Imagen mínima para probar el ciclo crear/destruir sin bajar Kali entero.
+# No uses slim en un engagement real: le faltan las herramientas.
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    OPENCODE_DISABLE_AUTOUPDATE=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates curl git python3 python3-pip \
+        gcc make jq tmux iproute2 iputils-ping \
+        procps nmap ncat \
+    && (curl -fsSL https://opencode.ai/install | bash || true) \
+    && OC="$(command -v opencode || true)" \
+    && { [ -n "$OC" ] || [ -x /root/.opencode/bin/opencode ] && OC=/root/.opencode/bin/opencode; true; } \
+    && { [ -z "$OC" ] || [ "$OC" = /usr/local/bin/opencode ] || ln -sf "$OC" /usr/local/bin/opencode; } \
+    && command -v opencode \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY TOOLS.txt /opt/aegis/TOOLS.md
+COPY bash_audit.sh /etc/aegis/bash_audit.sh
+COPY entrypoint.sh /usr/local/bin/aegis-entrypoint
+RUN chmod 644 /etc/aegis/bash_audit.sh \
+    && chmod 755 /usr/local/bin/aegis-entrypoint \
+    && mkdir -p /workspace /run/aegis/brief /run/aegis/out /opt/aegis \
+    && echo "(slim) inventario incompleto; construye aegis-runner:latest" > /opt/aegis/TOOLS.md
+
+WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/aegis-entrypoint"]

@@ -1,0 +1,46 @@
+Inventario del runner Aegis
+
+El orquestador no decide el ataque. Estas herramientas están preinstaladas
+para no gastar horas en apt. Puedes instalar más dentro del run.
+
+Si un paquete faltó en el build, mira /opt/aegis/MISSING.txt.
+
+Reconocimiento y superficie
+nmap, masscan, rustscan, naabu, amass, theHarvester, recon-ng, dnsrecon,
+dnsenum, whatweb, wafw00f, httpx, subfinder, katana, gobuster, ffuf,
+feroxbuster, dirb, wfuzz, arjun, nikto, nuclei, wpscan, sslscan, sslyze,
+enum4linux / enum4linux-ng, smbmap, smbclient, ldapdomaindump, snmpcheck,
+ike-scan, nbtscan
+
+Orquestación del agente (en el workspace, no requieren rebuild)
+aegis-state (engagement.json: users, creds, tried, next),
+aegis-parse (kerbrute / nxc / nmap → estado),
+aegis-spray (--corporate: empresa+año a TODOS los users),
+aegis-clip (recorta stdout; quédate hits).
+
+Subagentes OpenCode: identity (AD), web (HTTP), critic (anti-basura).
+Skills: .opencode/skill/ad-foothold, web-foothold, phase-gate.
+
+Active Directory / Windows (desde Linux)
+impacket (psexec, wmiexec, secretsdump, ntlmrelayx, GetNPUsers, …),
+netexec / crackmapexec, bloodhound.py, certipy-ad, bloodyAD, responder,
+evil-winrm, kerbrute, windows-binaries, wine, mingw-w64, powershell
+
+Web
+sqlmap, commix, mitmproxy, zaproxy, burpsuite (GUI; sin DISPLAY es limitado),
+caido-cli, jwt-tool, hakrawler
+
+Credenciales
+hydra, medusa, ncrack, john, hashcat, hashid, seclists, wordlists, cewl
+
+Red / pivote
+chisel, ligolo-ng, proxychains4, openvpn, tcpdump, tshark, socat, ncat
+
+Binarios / forense
+radare2, gdb, binwalk, foremost, steghide, exiftool, checksec
+
+Frameworks
+metasploit-framework, exploitdb (searchsploit), pwntools
+
+Build
+gcc/g++, make, python3, ruby, go, rustc, php, node

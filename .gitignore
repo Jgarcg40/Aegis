@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+dist/
+build/
+data/
+evals/results/
+*.log
+.env
+secrets.env
+.live
+queue.json
+.idea/
+.vscode/

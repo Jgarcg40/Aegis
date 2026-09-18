@@ -102,12 +102,14 @@ Un *harness* es el cliente que conecta el modelo con su entorno de trabajo. Aegi
 | ------------------------------ | -------------------------------- | ----------------------------------------------- |
 | **Claude**                     | Claude Code                      | Probado.                                        |
 | **Grok**                       | OpenCode                         | Probado.                                        |
+| **Chatgpt**                    | Codex                            | Probado.                                        |
 | **Ollama**                     | Endpoint configurado             | Probado.                                        |
 | **vLLM**                       | Endpoint configurado             | Implementado; no probado.                       |
 | **Otros modelos del catálogo** | Según el cliente correspondiente | Sin validación funcional equivalente declarada. |
 
+Entre las configuraciones utilizadas en las pruebas figuran Claude Opus 4.8 y Sonnet 4.6, Grok 4.6 y 4.3, ChatGPT 5.5 y, mediante Ollama, Qwen 3.8 27B. El catálogo de la interfaz de usuario (UI) puede mostrar otros modelos (Opus 5, Sonnet 5, Fable 5, Haiku, modelos Codex o gateways). Estas referencias corresponden a las entradas disponibles en el catálogo y no constituyen una garantía de disponibilidad ni de compatibilidad con todas las combinaciones posibles.
 
-Entre las configuraciones usadas en las pruebas figuran Claude Opus 4.8 y Sonnet 4.6, y Grok 4.6 y 4.3, con ollama se probo qwen3.8 27b. El catálogo de la UI puede listar otras (Opus 5, Sonnet 5, Fable 5, Haiku, modelos Codex, gateways). Son referencias a esas entradas, no garantías sobre disponibilidad ni sobre todas las combinaciones.
+Fable, Opus 5, ChatGPT 5.6 y Astra no suelen ser utilizables, ya que activan rápidamente sus salvaguardas frente a solicitudes relacionadas con ciberseguridad. La principal excepción es pertenecer a alguno de sus programas especiales para investigadores de ciberseguridad.
 
 Las cuentas, credenciales de API y endpoints se gestionan en **Modelos**. La compatibilidad efectiva depende del modelo, el cliente, la modalidad de acceso, la versión y las condiciones del proveedor. Aegis no incluye una suscripción a servicios de modelos.
 

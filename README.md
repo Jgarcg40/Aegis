@@ -103,9 +103,9 @@ Un *harness* es el cliente que conecta el modelo con su entorno de trabajo. Aegi
 | **Claude**                     | Claude Code                      | Probado.                                        |
 | **Grok**                       | OpenCode                         | Probado.                                        |
 | **Chatgpt**                    | Codex                            | Probado.                                        |
-| **Ollama**                     | Endpoint configurado             | Probado.                                        |
-| **vLLM**                       | Endpoint configurado             | Implementado; no probado.                       |
-| **Otros modelos del catálogo** | Según el cliente correspondiente | Sin validación funcional equivalente declarada. |
+| **Ollama**                     | Endpoint configurado (OpenCode)  | Probado.                                        |
+| **vLLM**                       | Endpoint configurado (OpenCode)  | Implementado; no probado.                       |
+| **Otros modelos del catálogo** | Según el cliente correspondiente (OpenCode) | Sin validación funcional equivalente declarada. |
 
 Entre las configuraciones utilizadas en las pruebas figuran Claude Opus 4.8 y Sonnet 4.6, Grok 4.6 y 4.3, ChatGPT 5.5 y, mediante Ollama, Qwen 3.8 27B. El catálogo de la interfaz de usuario (UI) puede mostrar otros modelos (Opus 5, Sonnet 5, Fable 5, Haiku, modelos Codex o gateways). Estas referencias corresponden a las entradas disponibles en el catálogo y no constituyen una garantía de disponibilidad ni de compatibilidad con todas las combinaciones posibles.
 

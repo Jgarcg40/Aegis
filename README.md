@@ -200,13 +200,13 @@ El instalador comprueba el host, instala dependencias, prepara el directorio de 
 
 | Opción                      | Finalidad                                               |
 | --------------------------- | ------------------------------------------------------- |
-| `./install.sh --check`      | Diagnosticar requisitos sin instalar.                   |
-| `./install.sh --skip-image` | Preparar el host y dejar la imagen para después.        |
-| `./install.sh --pack`       | Crear un paquete con las exclusiones del proyecto.      |
-| `./install.sh -y`           | Instalar sin preguntas, incluidos los tres CLIs de host. |
-| `./install.sh --wipe`       | Parar la UI (incluido un proceso huérfano) y quitar la unidad systemd. |
-| `./install.sh --wipe-clis`  | Lo anterior y, además, OpenCode, Claude Code y Codex del host. |
-| `./uninstall.sh`            | Quitar Aegis por completo. Docker Engine y los CLI del host no se tocan. |
+| `bash install.sh --check`      | Diagnosticar requisitos sin instalar.                   |
+| `bash install.sh --skip-image` | Preparar el host y dejar la imagen para después.        |
+| `bash install.sh --pack`       | Crear un paquete con las exclusiones del proyecto.      |
+| `bash install.sh -y`           | Instalar sin preguntas, incluidos los tres CLIs de host. |
+| `bash install.sh --wipe`       | Parar la UI (incluido un proceso huérfano) y quitar la unidad systemd. |
+| `bash install.sh --wipe-clis`  | Lo anterior y, además, OpenCode, Claude Code y Codex del host. |
+| `bash uninstall.sh`            | Quitar Aegis por completo. Docker Engine y los CLI del host no se tocan. |
 
 
 El paquete (`--pack`) incluye código, el Dockerfile de la imagen de ejecución, el instalador, este README y capturas. No incluye la imagen Docker ya construida. Excluye `tests/`, `evals/`, `labs/`, `data/` (runs, logs, informes, evidencias), `.env`, `.git` y caches. No sustituye una revisión del contenido que se va a publicar.

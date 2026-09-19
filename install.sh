@@ -942,7 +942,16 @@ layout_data() {
   step "6/8" "Árbol data/ y permisos"
   mkdir -p "$ROOT/data/runs" "$ROOT/data/web/inbox"
   chmod 755 "$ROOT/data" "$ROOT/data/runs" "$ROOT/data/web" "$ROOT/data/web/inbox" 2>/dev/null || true
-  chmod 755 "$ROOT/aegis" "$ROOT/aegis-web" "$ROOT/install.sh" 2>/dev/null || true
+  # El bind mount usa los permisos del host, no los del Dockerfile.
+  if ! chmod 755 \
+    "$ROOT/aegis" \
+    "$ROOT/aegis-web" \
+    "$ROOT/install.sh" \
+    "$ROOT/images/runner/entrypoint.sh"; then
+    fail "no pude dar permisos de ejecucion a los scripts de Aegis"
+    BLOCKED+=("permisos de ejecucion")
+    return 1
+  fi
   ok "data/runs + data/web/inbox"
 }
 
@@ -1192,7 +1201,10 @@ install_opencode || true
 install_claude || true
 install_codex || true
 if (( ! DO_CHECK )); then
-  layout_data
+  if ! layout_data; then
+    summary
+    exit 1
+  fi
 fi
 install_web || true
 build_image || true

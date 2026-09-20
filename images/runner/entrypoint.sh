@@ -389,7 +389,7 @@ looks_refused() {
   fi
   blob+=$(tail -c 16000 "$OUT/console.log" 2>/dev/null || true)
   printf '%s' "$blob" | grep -qiE \
-    "i('m| am) (sorry|unable)|i (can[’']?t|cannot|won[’']?t) (help|assist|do that|run|continue|read)|not able to (help|assist)|against (my |the )?(usage )?policy|violat(es|ing) (the )?(usage )?policy|safety policy|cannot assist with|won[’']?t (help|continue|run|read)|off-limits|offensive help|disallowed|i must refuse|i have to refuse|no\\.? i can.?t help|no puedo (ayudar|asistir|hacer eso|realizar)|no voy a (realizar|ejecutar|continuar|atacar|cumplir|iniciar)|sigo sin (ejecutar|poder)|no lo (haré|hago)|no cambio de criterio|deja de insistir|procedimientos de compromiso|política de (uso|seguridad)|salvaguarda|safeguards flagged|cyber-related safeguards|cyber verification program|model_refusal|api_refusal_category.:.cyber|stop_reason.:.refusal|refused to (continue|comply)|flagged for (possible )?(cybersecurity|safety|policy)|cybersecurity risk|trusted access for cyber|chatgpt\\.com/cyber|offensive exploitation|engagement ofensivo|trabajo ofensivo"
+    "i('m| am) (sorry|unable)|i (can[’']?t|cannot|won[’']?t) (help|assist|do that|run|continue|read)|not able to (help|assist)|against (my |the )?(usage )?policy|violat(es|ing) (the )?(usage )?policy|safety policy|cannot assist with|won[’']?t (help|continue|run|read)|off-limits|offensive help|disallowed|i must refuse|i have to refuse|no\\.? i can.?t help|no puedo (ayudar|asistir|hacer eso|realizar)|no voy a (realizar|ejecutar|continuar|atacar|cumplir|iniciar)|sigo sin (ejecutar|poder)|no lo (haré|hago)|no cambio de criterio|deja de insistir|procedimientos de compromiso|política de (uso|seguridad)|salvaguarda|safeguards flagged|cyber-related safeguards|cyber verification program|cyber_policy|turn\\.failed|model_refusal|api_refusal_category.:.cyber|stop_reason.:.refusal|refused to (continue|comply)|flagged for (possible )?(cybersecurity|safety|policy)|cybersecurity risk|trusted access for cyber|chatgpt\\.com/cyber|offensive exploitation|engagement ofensivo|trabajo ofensivo"
 }
 
 warmup_pending() {
@@ -2895,7 +2895,7 @@ should_continue() {
   return 0
 }
 
-mkdir -p "$OUT/findings" "$OUT/.audit" "$WS" /tmp/opencode-data /tmp/opencode-cache /tmp/opencode-state /tmp/codex-home /tmp/claude-home /tmp/claude-home/.claude
+mkdir -p "$OUT/findings" "$OUT/.audit" "$WS" /tmp/opencode-data /tmp/opencode-cache /tmp/opencode-state /opt/aegis/codex-home /tmp/claude-home /tmp/claude-home/.claude
 
 # nmap de Kali trae filecaps (cap_net_raw=eip). Con --security-opt
 # no-new-privileges el kernel niega el exec. Copiar el ELF crea un
@@ -2994,7 +2994,7 @@ resolve_claude_bin() {
 
 resolve_codex_bin() {
   [[ -n "$CODEBIN" ]] && return 0
-  export CODEX_HOME="${CODEX_HOME:-/tmp/codex-home}"
+  export CODEX_HOME="${CODEX_HOME:-/opt/aegis/codex-home}"
   for c in /opt/aegis/codex /usr/local/bin/codex; do
     if [[ -x "$c" ]]; then CODEBIN="$c"; break; fi
   done

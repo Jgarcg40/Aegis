@@ -333,6 +333,23 @@ class StagedCodex:
     auth_file: Path
 
 
+def _stage_root(run_id: str) -> Path:
+    # Codex se niega a crear helpers si CODEX_HOME vive bajo /tmp.
+    safe = "".join(c if c.isalnum() or c in "._-" else "-" for c in (run_id or "run"))[:64] or "run"
+    return Path.home() / ".cache" / "aegis" / "codex-stage" / safe
+
+
+def _is_stage_root(path: Path) -> bool:
+    raw = str(path)
+    if raw.startswith("/tmp/aegis-codex-"):
+        return True
+    try:
+        parent = path.resolve().parent
+        return parent == (Path.home() / ".cache" / "aegis" / "codex-stage").resolve()
+    except OSError:
+        return False
+
+
 def stage_codex(run_id: str) -> StagedCodex:
     src = host_auth_path()
     if not src.is_file() or not logged_in():
@@ -340,7 +357,7 @@ def stage_codex(run_id: str) -> StagedCodex:
             "no hay sesión Codex CLI en el host (~/.codex/auth.json). "
             "En una terminal: codex login   (Sign in with ChatGPT)"
         )
-    root = Path(f"/tmp/aegis-codex-{run_id}")
+    root = _stage_root(run_id)
     if root.exists():
         shutil.rmtree(root)
     home = root / "home"
@@ -387,7 +404,7 @@ def cleanup_stage(staged: StagedCodex | None) -> None:
     if staged is None:
         return
     try:
-        if staged.root.exists() and str(staged.root).startswith("/tmp/aegis-codex-"):
+        if staged.root.exists() and _is_stage_root(staged.root):
             shutil.rmtree(staged.root)
     except OSError:
         pass

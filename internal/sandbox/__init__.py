@@ -141,7 +141,7 @@ def start(
         "BASH_ENV": "/etc/aegis/bash_audit.sh",
         "AEGIS_SMOKE": "1" if smoke else "0",
         "AEGIS_HARNESS": harness or "opencode",
-        "CODEX_HOME": "/tmp/codex-home",
+        "CODEX_HOME": "/opt/aegis/codex-home",
         "CLAUDE_CONFIG_DIR": "/root/.claude",
         "AEGIS_PERSIST": "1" if persist else "0",
         "AEGIS_CONTINUE_PROMPT": continue_prompt or prompt,
@@ -266,9 +266,9 @@ def start(
                 f"{codex_code_mode_host.resolve()}:/opt/aegis/codex-code-mode-host:ro",
             ]
         if codex_home is not None:
-            args += ["-v", f"{codex_home.resolve()}:/tmp/codex-home:rw"]
+            args += ["-v", f"{codex_home.resolve()}:/opt/aegis/codex-home:rw"]
         else:
-            args += ["--tmpfs", "/tmp/codex-home:mode=0700,size=128m"]
+            args += ["--tmpfs", "/opt/aegis/codex-home:mode=0700,size=128m"]
     if harness == "claude" or backup_harness == "claude" or rescue_harness == "claude":
         if claude_bin is not None and claude_bin.is_file():
             args += ["-v", f"{claude_bin.resolve()}:/opt/aegis/claude:ro"]

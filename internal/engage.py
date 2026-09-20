@@ -2470,7 +2470,13 @@ SONNET_STEER = REFUSE_STEER
 # Compat: mismo texto. Ya no hay rama "mantener --continue".
 REFUSE_RESUME_STEER = REFUSE_STEER
 _REFUSE_RESULT = frozenset({"refusal"})
-_SYNTHETIC_REFUSE = ("safeguards flagged", "cyber-related safeguards", "api_refusal_category")
+_SYNTHETIC_REFUSE = (
+    "safeguards flagged",
+    "cyber-related safeguards",
+    "api_refusal_category",
+    "cyber_policy",
+)
+_CODEX_CYBER_ERR = frozenset({"cyber_policy", "refusal", "api_refusal"})
 # Refuso de contenido (el modelo cierra el turno con texto, exit 0, sin
 # api_refusal_category). Si no se detecta, persist relanza el mismo modelo.
 _CONTENT_REFUSE = re.compile(
@@ -2585,7 +2591,32 @@ def _assistant_did_work(obj: dict[str, Any]) -> bool:
     return False
 
 
+def _is_codex_cyber_event(obj: dict[str, Any] | None, raw: str) -> bool:
+    """Codex no usa api_refusal_category: emite type=error / cyber_policy / turn.failed."""
+    low = (raw or "").lower()
+    compact = low.replace(" ", "")
+    if "cyber_policy" in compact or '"type":"turn.failed"' in compact:
+        return True
+    if not obj:
+        return False
+    typ = str(obj.get("type") or "").lower()
+    if typ == "turn.failed":
+        return True
+    err = obj.get("error")
+    if isinstance(err, dict):
+        et = str(err.get("type") or err.get("code") or "").lower()
+        if et in _CODEX_CYBER_ERR or "cyber" in et or "safeguard" in et:
+            return True
+    if typ == "error":
+        msg = str(obj.get("message") or "").lower()
+        if "cyber" in msg or "safeguard" in msg or "refus" in msg:
+            return True
+    return False
+
+
 def _line_is_refuse(obj: dict[str, Any] | None, raw: str) -> bool:
+    if _is_codex_cyber_event(obj, raw):
+        return True
     if obj:
         typ = str(obj.get("type") or "")
         sub = str(obj.get("subtype") or "")

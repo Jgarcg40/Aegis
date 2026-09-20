@@ -46,6 +46,10 @@ _ARGV_DUMP = re.compile(
     re.I,
 )
 _CYBER_SHORT = "SALVAGUARDA · cyber — el modelo cortó este turno."
+_CODEX_TMP_HOME_WARN = re.compile(
+    r"could not create PATH aliases|Refusing to create helper binaries under temporary dir",
+    re.I,
+)
 
 
 def _clip(text: str, n: int = MAX_TEXT, *, keep_breaks: bool = False) -> str:
@@ -72,6 +76,8 @@ def polish_row(row: dict[str, str] | None) -> dict[str, str] | None:
         return None
     text = str(row.get("text") or "").strip()
     if not text:
+        return None
+    if _CODEX_TMP_HOME_WARN.search(text):
         return None
     if _CYBER_NOISE.search(text):
         out = dict(row)

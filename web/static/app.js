@@ -3588,6 +3588,8 @@ async function renderLanzar(view, gen) {
   });
 }
 
+let _rowMenuClose = null;
+
 function rowMenu(items, opts) {
   opts = opts || {};
   const list = (items || []).filter(Boolean);
@@ -3597,17 +3599,52 @@ function rowMenu(items, opts) {
   if (label) btn.innerHTML = (opts.icon || "") + `<span>${label}</span>`;
   else btn.textContent = "···";
   const pop = el("div", { class: "rowmenu-pop hidden", role: "menu" });
-  const close = () => { pop.classList.add("hidden"); btn.setAttribute("aria-expanded", "false"); document.removeEventListener("click", onDoc); document.removeEventListener("keydown", onKey); };
-  const onDoc = (e) => { if (!wrap.contains(e.target)) close(); };
+  const place = () => {
+    const r = btn.getBoundingClientRect();
+    const gap = 4;
+    const margin = 8;
+    const pw = pop.offsetWidth;
+    const ph = pop.offsetHeight;
+    let top = r.bottom + gap;
+    if (top + ph > window.innerHeight - margin && r.top - gap - ph >= margin) top = r.top - gap - ph;
+    let left = r.right - pw;
+    if (left < margin) left = margin;
+    if (left + pw > window.innerWidth - margin) left = Math.max(margin, window.innerWidth - margin - pw);
+    pop.style.top = `${Math.round(top)}px`;
+    pop.style.left = `${Math.round(left)}px`;
+  };
+  const close = () => {
+    if (_rowMenuClose === close) _rowMenuClose = null;
+    pop.classList.add("hidden");
+    btn.setAttribute("aria-expanded", "false");
+    if (wrap.isConnected) wrap.appendChild(pop);
+    else pop.remove();
+    document.removeEventListener("click", onDoc);
+    document.removeEventListener("keydown", onKey);
+    window.removeEventListener("scroll", onMove, true);
+    window.removeEventListener("resize", onMove);
+  };
+  const onDoc = (e) => { if (!wrap.contains(e.target) && !pop.contains(e.target)) close(); };
   const onKey = (e) => { if (e.key === "Escape") { close(); btn.focus(); } };
+  const onMove = () => { if (!wrap.isConnected) { close(); return; } place(); };
   for (const it of list) {
     pop.appendChild(el("button", { class: "rowmenu-item" + (it.danger ? " danger" : ""), role: "menuitem", onclick: (e) => { e.stopPropagation(); close(); it.onClick(e); } }, it.label));
   }
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     if (pop.classList.contains("hidden")) {
-      pop.classList.remove("hidden"); btn.setAttribute("aria-expanded", "true");
-      setTimeout(() => { document.addEventListener("click", onDoc); document.addEventListener("keydown", onKey); }, 0);
+      if (_rowMenuClose && _rowMenuClose !== close) _rowMenuClose();
+      document.body.appendChild(pop);
+      pop.classList.remove("hidden");
+      btn.setAttribute("aria-expanded", "true");
+      place();
+      _rowMenuClose = close;
+      setTimeout(() => {
+        document.addEventListener("click", onDoc);
+        document.addEventListener("keydown", onKey);
+        window.addEventListener("scroll", onMove, true);
+        window.addEventListener("resize", onMove);
+      }, 0);
     } else close();
   });
   wrap.appendChild(btn); wrap.appendChild(pop);

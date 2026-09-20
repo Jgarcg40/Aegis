@@ -733,7 +733,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .row-actions .btn { margin-left: 6px; }
 .rowmenu { position: relative; display: inline-block; margin-left: 6px; }
 .rowmenu-btn { min-width: 34px; letter-spacing: .12em; }
-.rowmenu-pop { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 168px; background: var(--panel-solid); border: 1px solid var(--line-2); border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: 5px; display: flex; flex-direction: column; gap: 2px; }
+.rowmenu-pop { position: fixed; z-index: 80; min-width: 168px; background: var(--panel-solid); border: 1px solid var(--line-2); border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: 5px; display: flex; flex-direction: column; gap: 2px; }
 .rowmenu-item { text-align: left; background: transparent; border: 0; color: var(--fg); font-family: var(--sans); font-size: 13.5px; font-weight: 500; line-height: 1.3; padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap; }
 .rowmenu-item:hover { background: var(--bg-3); }
 .rowmenu-item.danger { color: var(--crit); }

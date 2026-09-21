@@ -781,11 +781,15 @@ async function deleteRuns(ids, labels) {
   if (out && out.errors && out.errors.length) toast("Algunos no se pudieron borrar", "err");
   if (!gone.length && !skipped.length && !(out && out.errors && out.errors.length)) toast("No se borró ninguno", "err");
   if (state.viewRun && gone.includes(state.viewRun)) state.viewRun = null;
-  if (gone.length && Array.isArray(state.runs)) {
-    state.runs = state.runs.filter((r) => !gone.includes(r.run_id));
-  }
+  const dropGone = () => {
+    if (gone.length && Array.isArray(state.runs)) {
+      state.runs = state.runs.filter((r) => !gone.includes(r.run_id));
+    }
+  };
+  dropGone();
   state.runsTs = 0;
   await refreshHeader({ force: true });
+  dropGone();
   return out;
 }
 
@@ -3655,6 +3659,7 @@ async function renderHistorial(view, gen) {
   if (!runsFresh()) { view.innerHTML = ""; view.appendChild(loadingBox()); }
   const runs = await loadRuns();
   if (gen && state.renderGen !== gen) return;
+  const listOf = () => (Array.isArray(state.runs) ? state.runs : runs);
   view.innerHTML = "";
   view.appendChild(el("div", { class: "page-head" }, el("h1", {}, "Historial"), el("p", { class: "sub" }, "Todos los engagements. Haz clic en un run para abrir su detalle.")));
   const search = el("input", { type: "text", "aria-label": "Buscar runs", placeholder: "buscar: título, id, target, modo, modelo, estado…" });
@@ -3690,7 +3695,7 @@ async function renderHistorial(view, gen) {
     const ids = [...selected];
     if (!ids.length) return;
     const labels = ids.map((id) => {
-      const hit = runs.find((r) => r.run_id === id);
+      const hit = listOf().find((r) => r.run_id === id);
       return hit ? (runTitle(hit) || id) : id;
     });
     try {
@@ -3703,9 +3708,10 @@ async function renderHistorial(view, gen) {
 
   const draw = () => {
     const q = search.value.toLowerCase().trim();
-    const filtered = runs.filter((r) => !q || JSON.stringify([r.title, r.run_id, r.mode, r.model, r.backup_model, r.harness, r.status, r.reason, r.started_at, r.operator_note, r.ctf ? "ctf" : "auditoria", r.ssh_host ? "ssh " + sshLabel(r) : "", (r.ctf_flags || []).join(" "), (r.targets || []).map((t) => t.value)]).toLowerCase().includes(q));
+    const list = listOf();
+    const filtered = list.filter((r) => !q || JSON.stringify([r.title, r.run_id, r.mode, r.model, r.backup_model, r.harness, r.status, r.reason, r.started_at, r.operator_note, r.ctf ? "ctf" : "auditoria", r.ssh_host ? "ssh " + sshLabel(r) : "", (r.ctf_flags || []).join(" "), (r.targets || []).map((t) => t.value)]).toLowerCase().includes(q));
     clearBtn.classList.toggle("hidden", !q);
-    count.textContent = q ? `${filtered.length} de ${runs.length}` : `${runs.length} runs`;
+    count.textContent = q ? `${filtered.length} de ${list.length}` : `${list.length} runs`;
     paintBulk();
     container.innerHTML = "";
     if (!filtered.length) { container.appendChild(el("div", { class: "empty" }, "Sin resultados.")); return; }

@@ -1006,6 +1006,7 @@ class RunManager:
         except SystemExit:
             pass
         remove_run_dir(root, runs_dir=self.cfg.runs_dir(), image=self.cfg.image)
+        self._invalidate_run_views(run_id)
 
     def delete_runs(self, run_ids: list[str]) -> dict[str, Any]:
         """Borra varios runs. El vivo se omite; el resto sigue aunque uno falle."""

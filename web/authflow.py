@@ -109,6 +109,15 @@ class LoginManager:
             argv = [str(binary), "auth", "login"]
             env = host_cli_env()
             ensure_host_home()
+        elif p in {"cursor", "cursor-agent"}:
+            from internal.cursorcli import agent_env, login_argv, wrapper_bin
+
+            binary = wrapper_bin()
+            if binary is None:
+                raise RuntimeError("Cursor Agent no está instalado en el host")
+            argv = login_argv()
+            env = host_cli_env()
+            env.update(agent_env())
         elif p in {"codex", "codex-cli"}:
             from internal.codex import ensure_host_home, login_argv, wrapper_bin
 
@@ -132,7 +141,8 @@ class LoginManager:
         home = Path.home()
         ensure_alive_cwd(home)
         env["PWD"] = str(home)
-        env["HOME"] = str(home)
+        if p not in {"cursor", "cursor-agent"}:
+            env["HOME"] = str(home)
         sid = new_login_sid()
         pid, fd = pty.fork()
         if pid == 0:  # hijo

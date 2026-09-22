@@ -1318,7 +1318,7 @@ def ensure_graph(state: dict[str, Any]) -> dict[str, Any]:
         else:
             host = _host_ip(a)
             user = ""
-        label = f"{user}@{host}" if user and host else (user or host)
+        label = access_label(user, host)
         if not label:
             continue
         nid = add_graph_node(
@@ -1371,6 +1371,17 @@ def ensure_graph(state: dict[str, Any]) -> dict[str, Any]:
         else:
             g["current"] = ""
     return g
+
+
+def access_label(user: str, host: str) -> str:
+    """Si el principal ya es un correo, no se le añade @host."""
+    user = (user or "").strip()
+    host = (host or "").strip()
+    if user and "@" in user:
+        return user
+    if user and host:
+        return f"{user}@{host}"
+    return user or host
 
 
 def add_graph_node(
@@ -2614,7 +2625,19 @@ def _is_codex_cyber_event(obj: dict[str, Any] | None, raw: str) -> bool:
     return False
 
 
+def _is_anthropic_api_block(raw: str) -> bool:
+    """Corte de Anthropic en Cursor. No viene como api_refusal."""
+    low = (raw or "").lower()
+    if "request blocked by anthropic" in low:
+        return True
+    if "restrictions on cyber content" in low:
+        return True
+    return "actionrequirederror" in low and "cyber" in low
+
+
 def _line_is_refuse(obj: dict[str, Any] | None, raw: str) -> bool:
+    if _is_anthropic_api_block(raw):
+        return True
     if _is_codex_cyber_event(obj, raw):
         return True
     if obj:
@@ -2658,6 +2681,8 @@ def turn_ended_refused(out: Path) -> bool:
             last_result_idx = i
         if _line_is_refuse(obj, line):
             last_refuse = i
+        elif obj and obj.get("type") == "tool_call" and obj.get("subtype") == "completed":
+            last_work = i
         elif obj and (obj.get("type") == "assistant" or obj.get("type") == "tool_use"):
             if _assistant_did_work(obj):
                 last_work = i
@@ -2869,6 +2894,10 @@ def parse_flags(text: str) -> list[dict[str, str]]:
     by_val: dict[str, tuple[int, str]] = {}
     for hm in re.finditer(r"\b([a-fA-F0-9]{32})\b", raw):
         if _HEX_FILE_EXT.match(raw[hm.end(1) : hm.end(1) + 10]):
+            continue
+        # raw=<hex> es un file handle, no una flag.
+        pre = raw[max(0, hm.start() - 16) : hm.start()].lower().replace(" ", "")
+        if pre.endswith("raw="):
             continue
         val = hm.group(1).lower()
         hpos = hm.start()
@@ -4585,6 +4614,14 @@ def _extract_console_commands(raw: str) -> list[str]:
             if not inp and isinstance(part.get("input"), dict):
                 inp = part["input"]
             cmd = str(inp.get("command") or inp.get("cmd") or "").strip()
+            if cmd:
+                cmds.append(cmd)
+        # Cursor: shell en tool_call completado.
+        if obj.get("type") == "tool_call" and obj.get("subtype") == "completed":
+            tool = obj.get("tool_call") if isinstance(obj.get("tool_call"), dict) else {}
+            call = tool.get("shellToolCall") if isinstance(tool.get("shellToolCall"), dict) else {}
+            args = call.get("args") if isinstance(call.get("args"), dict) else {}
+            cmd = str(args.get("command") or "").strip()
             if cmd:
                 cmds.append(cmd)
         # Codex: eventos item.* / command, con command a nivel raíz o en item

@@ -9,7 +9,12 @@ from urllib.parse import urlparse
 
 _CVE_RE = re.compile(r"\bCVE-\d{4}-\d{4,}\b", re.I)
 _URL_RE = re.compile(r"https?://[^\s'\"\\<>]+", re.I)
-_GIT_CLONE_RE = re.compile(r"\bgit\s+clone\s+(?:--\S+\s+)*(\S+)", re.I)
+_GIT_CLONE_RE = re.compile(r"\bgit\s+clone\b(?P<rest>[^\n;|&]*)", re.I)
+# Estas opciones llevan valor en el token siguiente.
+_GIT_CLONE_VALUE_FLAGS = frozenset({
+    "--depth", "-b", "--branch", "-c", "--config", "--origin", "--reference",
+    "--template", "--separate-git-dir", "-j", "--jobs", "--reference-if-able",
+})
 _SEARCHSPLOIT_P_RE = re.compile(r"\bsearchsploit\s+(?:-p|--path)\s+(\d+)\b", re.I)
 _SEARCHSPLOIT_Q_RE = re.compile(r"\bsearchsploit\s+(?!-p\b|--path\b|--help\b)([A-Za-z0-9._+-]+)", re.I)
 _EDB_PATH_RE = re.compile(r"/usr/share/exploitdb/[A-Za-z0-9/_.-]+\.(?:py|rb|c|pl|sh|txt|md|go)", re.I)
@@ -90,10 +95,27 @@ def iter_fetch_urls(argv: str) -> list[str]:
     return out
 
 
+def _git_clone_target(rest: str) -> str:
+    toks = (rest or "").split()
+    i = 0
+    while i < len(toks):
+        t = toks[i]
+        if t == "--":
+            return toks[i + 1] if i + 1 < len(toks) else ""
+        if t.startswith("-"):
+            if "=" in t:
+                i += 1
+                continue
+            i += 2 if t in _GIT_CLONE_VALUE_FLAGS else 1
+            continue
+        return t
+    return ""
+
+
 def git_clone_urls(argv: str) -> list[str]:
     out: list[str] = []
     for m in _GIT_CLONE_RE.finditer(argv or ""):
-        raw = _clean_url(m.group(1))
+        raw = _clean_url(_git_clone_target(m.group("rest") or ""))
         if raw.startswith("http") or raw.startswith("git@"):
             if raw.startswith("git@"):
                 raw = "https://" + raw.split("@", 1)[1].replace(":", "/", 1)

@@ -4,7 +4,7 @@
 
 Aegis se ejecuta en un servidor propio y reúne en una interfaz web la configuración, el seguimiento y la documentación de una auditoría. Cada ejecución utiliza un agente dentro de un contenedor Docker efímero. En el host, una capa de supervisión denominada **conciencia** revisa su progreso y registra sus decisiones.
 
-El proyecto está en desarrollo. Las pruebas realizadas por el autor se centran en **Claude y Grok**. La presencia de otros proveedores en la interfaz no implica que estén probados.
+El proyecto está en desarrollo. Las pruebas realizadas por el autor cubren **Claude**, **Grok** y, con Cursor Agent, **Kimi K3** y **Opus 5**. La presencia de otros proveedores en la interfaz no implica que estén probados.
 
 > Destinado a investigación y auditorías en sistemas propios o expresamente autorizados. El alcance debe cubrir las actividades realizadas y respetar las condiciones de los laboratorios y proveedores utilizados. Los resultados requieren revisión humana.
 
@@ -35,7 +35,7 @@ El proyecto está en desarrollo. Las pruebas realizadas por el autor se centran 
 ## Qué ofrece
 
 - **Una ejecución activa a la vez**, con cola FIFO. El botón **Lanzar / Encolar** inicia el run o lo deja esperando; el widget **Cola** permite quitar una entrada que aún no ha arrancado.
-- **Un agente ejecutor por auditoría**, mediante un cliente de modelos como Claude Code u OpenCode.
+- **Un agente ejecutor por auditoría**, mediante un cliente de modelos como Claude Code, OpenCode, Codex CLI o Cursor Agent.
 - **Entorno Docker por ejecución**, con herramientas de seguridad y límites de recursos configurables.
 - **Seguimiento en el navegador**: consola, cadena, cuentas, cuaderno, comandos, red, archivos, hallazgos e informe.
 - **Banda de misión** en Operar: tiempo, tokens, cuentas, hipótesis, findings, comandos y conciencia. El bloque Sistema (RAM, CPU, jobs) queda plegado.
@@ -95,27 +95,26 @@ El tiempo total hasta disponer del informe incluye también el cierre y su gener
 
 ## Modelos e integraciones
 
-Un *harness* es el cliente que conecta el modelo con su entorno de trabajo. Aegis integra **Claude Code**, **OpenCode** y **Codex CLI**, pero las pruebas funcionales declaradas por el autor se centran en estas familias:
+Un *harness* es el cliente que conecta el modelo con su entorno de trabajo. Aegis integra **Claude Code**, **OpenCode**, **Codex CLI** y **Cursor Agent**. Las pruebas funcionales declaradas por el autor se centran en estas familias:
 
 
 | Familia                        | Integración utilizada            | Estado                                          |
 | ------------------------------ | -------------------------------- | ----------------------------------------------- |
-| **Claude**                     | Claude Code                      | Probado.                                        |
-| **Grok**                       | OpenCode                         | Probado.                                        |
+| **Claude**                     | Claude Code y Cursor Agent       | Probado (Opus 4.8 y Opus 5).                    |
+| **Grok**                       | OpenCode y Cursor Agent          | Probado (4.7, 4.6 y 4.3).                       |
+| **Kimi**                       | Cursor Agent                     | Probado (Kimi K3).                              |
 | **Chatgpt**                    | Codex                            | Probado.                                        |
 | **Ollama**                     | Endpoint configurado (OpenCode)  | Probado.                                        |
 | **vLLM**                       | Endpoint configurado (OpenCode)  | Implementado; no probado.                       |
-| **Otros modelos del catálogo** | Según el cliente correspondiente (OpenCode) | Sin validación funcional equivalente declarada. |
+| **Otros modelos del catálogo** | Según el cliente correspondiente | Sin validación funcional equivalente declarada. |
 
-Entre las configuraciones utilizadas en las pruebas figuran Claude Opus 4.8 y Sonnet 4.6, Grok 4.6 y 4.3, ChatGPT 5.5 y, mediante Ollama, Qwen 3.8 27B. El catálogo de la interfaz de usuario (UI) puede mostrar otros modelos (Opus 5, Sonnet 5, Fable 5, Haiku, modelos Codex o gateways). Estas referencias corresponden a las entradas disponibles en el catálogo y no constituyen una garantía de disponibilidad ni de compatibilidad con todas las combinaciones posibles.
-
-Fable, Opus 5, ChatGPT 5.6 y Astra no suelen ser utilizables, ya que activan rápidamente sus salvaguardas frente a solicitudes relacionadas con ciberseguridad. La principal excepción es pertenecer a alguno de sus programas especiales para investigadores de ciberseguridad.
+Entre las configuraciones utilizadas en las pruebas figuran Claude Opus 4.8 y Opus 5, Sonnet 4.6, Grok 4.7, 4.6 y 4.3, Kimi K3, ChatGPT 5.5 y, mediante Ollama, Qwen 3.8 27B. Con Cursor Agent esas sesiones mantienen el hilo de trabajo con más continuidad: Opus 5 y Grok 4.7 pueden ceder el turno al relevo en algún momento, y lo hacen menos a menudo que en otros clientes. El catálogo de la interfaz puede mostrar otros modelos (Sonnet 5, Fable 5, Haiku, modelos Codex o gateways). Esas entradas no garantizan disponibilidad ni compatibilidad con todas las combinaciones.
 
 Las cuentas, credenciales de API y endpoints se gestionan en **Modelos**. La compatibilidad efectiva depende del modelo, el cliente, la modalidad de acceso, la versión y las condiciones del proveedor. Aegis no incluye una suscripción a servicios de modelos.
 
 ![Cuentas e integraciones en la página Modelos](docs/screenshots/modelos.png)
 
-*Harnesses (Codex CLI, Claude Code, OpenCode) y proveedores activados. La presencia de un modelo en el catálogo no implica que esa combinación esté probada.*
+*Harnesses (Codex CLI, Claude Code, OpenCode, Cursor Agent) y proveedores activados. La presencia de un modelo en el catálogo no implica que esa combinación esté probada.*
 
 ### Continuidad, relevo y respaldo
 
@@ -128,7 +127,7 @@ Un turno vacío (sin herramientas ni texto) no se trata como salvaguarda. Tras u
 
 ### Límites de cuota, sesión y ritmo
 
-El orquestador lee los avisos del *harness* o de la API. Distingue un tope del **proveedor** de una negativa del modelo, de un corte de turno y de que el agente mencione un rate-limit del objetivo. La detección se basa en mensajes reconocibles; no cubre todas las redacciones de todos los proveedores. Las pruebas declaradas siguen centradas en Claude y Grok.
+El orquestador lee los avisos del *harness* o de la API. Distingue un tope del **proveedor** de una negativa del modelo, de un corte de turno y de que el agente mencione un rate-limit del objetivo. La detección se basa en mensajes reconocibles; no cubre todas las redacciones de todos los proveedores. Las pruebas declaradas cubren Claude, Grok, Kimi K3 y Cursor Agent.
 
 
 | Situación | Qué hace Aegis |
@@ -195,7 +194,7 @@ bash install.sh --check
 bash install.sh
 ```
 
-El instalador comprueba el host, instala dependencias, prepara el directorio de datos, configura el servicio de la UI y construye la imagen. OpenCode, Claude Code y Codex CLI en el host son opcionales: pregunta por cada uno (Enter = no; `-y` instala los tres). Si los instalas después con el instalador oficial, Aegis los detecta al refrescar Modelos; Lanzar solo lista los que hay. Algunas operaciones requieren privilegios administrativos y la construcción puede tardar. El build de la imagen fija el mirror `kali.download` (el redirector geográfico de Kali a veces apunta a un CDN caído) y deja OpenCode en una capa posterior: si ese paso falla, un `docker build` de nuevo reutiliza Kali y no empieza de cero. Los paquetes opcionales que no se instalen quedan en `/opt/aegis/MISSING.txt` dentro de la imagen; no impiden usarla.
+El instalador comprueba el host, instala dependencias, prepara el directorio de datos, configura el servicio de la UI y construye la imagen. OpenCode, Claude Code, Codex CLI y Cursor Agent en el host son opcionales: pregunta por cada uno (Enter = no; `-y` instala los cuatro). Si los instalas después con el instalador oficial, Aegis los detecta al refrescar Modelos; Lanzar solo lista los que hay. Algunas operaciones requieren privilegios administrativos y la construcción puede tardar. El build de la imagen fija el mirror `kali.download` (el redirector geográfico de Kali a veces apunta a un CDN caído) y deja OpenCode en una capa posterior: si ese paso falla, un `docker build` de nuevo reutiliza Kali y no empieza de cero. Los paquetes opcionales que no se instalen quedan en `/opt/aegis/MISSING.txt` dentro de la imagen; no impiden usarla.
 
 
 | Opción                      | Finalidad                                               |
@@ -203,7 +202,7 @@ El instalador comprueba el host, instala dependencias, prepara el directorio de 
 | `bash install.sh --check`      | Diagnosticar requisitos sin instalar.                   |
 | `bash install.sh --skip-image` | Preparar el host y dejar la imagen para después.        |
 | `bash install.sh --pack`       | Crear un paquete con las exclusiones del proyecto.      |
-| `bash install.sh -y`           | Instalar sin preguntas, incluidos los tres CLIs de host. |
+| `bash install.sh -y`           | Instalar sin preguntas, incluidos los cuatro CLIs de host. |
 | `bash install.sh --wipe`       | Parar la UI (incluido un proceso huérfano) y quitar la unidad systemd. |
 | `bash install.sh --wipe-clis`  | Lo anterior y, además, OpenCode, Claude Code y Codex del host. |
 | `bash uninstall.sh`            | Quitar Aegis por completo. Docker Engine y los CLI del host no se tocan. |
@@ -225,7 +224,7 @@ El servicio puede mantenerse tras cerrar sesión y reiniciarse con el host cuand
 
 ## Desinstalación
 
-`bash uninstall.sh` para el servicio de la UI **antes** de borrar el árbol (si no, un Python huérfano puede seguir en el puerto 8787 con el directorio ya eliminado). Quita la unidad systemd, la imagen `aegis-runner`, restos en `/tmp/aegis-*`, las líneas de PATH que el instalador añadió a `~/.profile` y `~/.bashrc`, y el directorio del proyecto. No desinstala Docker Engine ni OpenCode, Claude Code o Codex.
+`bash uninstall.sh` para el servicio de la UI **antes** de borrar el árbol (si no, un Python huérfano puede seguir en el puerto 8787 con el directorio ya eliminado). Quita la unidad systemd, la imagen `aegis-runner`, restos en `/tmp/aegis-*`, las líneas de PATH que el instalador añadió a `~/.profile` y `~/.bashrc`, y el directorio del proyecto. No desinstala Docker Engine ni OpenCode, Claude Code, Codex o Cursor Agent.
 
 ```bash
 cd ~/aegis && bash uninstall.sh

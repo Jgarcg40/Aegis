@@ -73,15 +73,28 @@ SECRET_NAMES = {".serve"}
 
 _PTR_CACHE: dict[str, str] = {}
 
-_DOWNLOAD_RE = re.compile(
-    r"\b(wget|curl|aria2c)\b.*(-O\b|-o\s+\S+|--output\b|--remote-name\b)",
-    re.I,
+# -oN de nmap no cuenta. Cada orden va en su línea.
+_DOWNLOAD_TOOL_RE = re.compile(
+    r"(?i)\b(?P<tool>wget|curl|aria2c)\b(?P<body>[^\n;|&]*)"
+)
+_DOWNLOAD_OUT_RE = re.compile(
+    r"(?i)(?:^|\s)(?:-O\b|--remote-name\b|--output(?:=|\s)|-o(?![A-Za-z])(?:=|\s))"
 )
 _DNS_LINE_RE = re.compile(
     r"(?:^|[;&|\n])\s*(?:sudo\s+)?(?P<tool>dig|nslookup|host|getent\s+hosts|resolvectl|drill)\b(?P<body>[^\n;&|]*)",
     re.I,
 )
 _URL_RE = re.compile(r"https?://([A-Za-z0-9._-]+)(?::(\d+))?", re.I)
+_FULL_URL_RE = re.compile(r"https?://[^\s'\"<>]+", re.I)
+_HTTP_CLIENT_RE = re.compile(r"urllib|requests\.|http\.client|urlopen|aiohttp|httpx\.", re.I)
+# URL armada: http://{host} o "http://" + host.
+_BUILT_HTTP_RE = re.compile(r"""(?i)https?://(?:\{|['\"]\s*\+|%[\(\{])""")
+_QUOTED_HOST_RE = re.compile(
+    r"""['\"]((?:\d{1,3}(?:\.\d{1,3}){3})|[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)+)['\"]"""
+)
+_ANNOUNCED_URL_RE = re.compile(
+    r"(?i)^(?:\s*(?:GET|POST|HEAD|PUT|DELETE|URL|FETCH|REQUEST)\b\s*[:=]?\s*)?(https?://\S+)\s*$"
+)
 _DOMAIN_RE = re.compile(r"\b([a-z][a-z0-9-]*\.(?:[a-z0-9-]+\.)*[a-z]{2,})\b", re.I)
 _IP_RE = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})(?::(\d+))?\b")
 _NET_CALL_RE = re.compile(
@@ -1716,7 +1729,10 @@ class RunManager:
         self._attach_console_io(root, commands, tools_recent)
         seen_argv = {(c.get("argv") or "")[:240] for c in commands}
         for c in commands:
-            self._scan_argv(c.get("argv") or "", c.get("ts") or "", downloads, dns_names, net, targets)
+            argv = c.get("argv") or ""
+            ts = c.get("ts") or ""
+            self._scan_argv(argv, ts, downloads, dns_names, net, targets)
+            self._scan_built_http(argv, c.get("stdout") or "", ts, dns_names, net, targets)
         for argv, ts in extra_argv:
             if argv[:240] in seen_argv:
                 continue
@@ -1882,6 +1898,58 @@ class RunManager:
                 inp = st.get("input") if isinstance(st.get("input"), dict) else {}
                 yield ev, part, st, inp
                 continue
+            if ev.get("type") == "tool_call" and ev.get("subtype") == "completed":
+                tool = ev.get("tool_call") if isinstance(ev.get("tool_call"), dict) else {}
+                fetch = tool.get("webFetchToolCall") if isinstance(tool.get("webFetchToolCall"), dict) else {}
+                fargs = fetch.get("args") if isinstance(fetch.get("args"), dict) else {}
+                furl = str(fargs.get("url") or "").strip()
+                if furl:
+                    # Fetch del modelo. La lista deduplica por URL.
+                    st = {
+                        "status": "completed",
+                        "exit": "completed",
+                        "input": {"url": furl},
+                        "output": "",
+                        "error": "",
+                    }
+                    part = {
+                        "type": "tool",
+                        "tool": "webfetch",
+                        "id": str(ev.get("call_id") or fargs.get("toolCallId") or ""),
+                        "state": st,
+                    }
+                    yield ev, part, st, st["input"]
+                    continue
+                call = tool.get("shellToolCall") if isinstance(tool.get("shellToolCall"), dict) else {}
+                args = call.get("args") if isinstance(call.get("args"), dict) else {}
+                cmd = str(args.get("command") or "").strip()
+                if not cmd:
+                    continue
+                result = call.get("result") if isinstance(call.get("result"), dict) else {}
+                ok = result.get("success") if isinstance(result.get("success"), dict) else {}
+                err = result.get("failure") if isinstance(result.get("failure"), dict) else {}
+                if not err and isinstance(result.get("error"), dict):
+                    err = result["error"]
+                body = ok or err
+                code = body.get("exitCode")
+                stdout = str(body.get("stdout") or body.get("interleavedOutput") or "")
+                stderr = str(body.get("stderr") or "")
+                failed = bool(err) or (isinstance(code, int) and code != 0)
+                st = {
+                    "status": "error" if failed else "completed",
+                    "exit": code if isinstance(code, int) else ("error" if failed else "completed"),
+                    "input": {"command": cmd, "cwd": str(args.get("workingDirectory") or "")},
+                    "output": stdout[:12000],
+                    "error": stderr[:2000] if failed else "",
+                }
+                part = {
+                    "type": "tool",
+                    "tool": "bash",
+                    "id": str(ev.get("call_id") or tool.get("toolCallId") or ""),
+                    "state": st,
+                }
+                yield ev, part, st, st["input"]
+                continue
             if ev.get("type") == "item.completed":
                 item = ev.get("item") if isinstance(ev.get("item"), dict) else {}
                 if item.get("type") != "command_execution":
@@ -1925,7 +1993,7 @@ class RunManager:
     def _commands_from_console(self, root: Path) -> list[dict]:
         out: list[dict] = []
         seen: set[str] = set()
-        for ev, part, st, inp in self._iter_console_tools(root, tail_bytes=2_500_000) or []:
+        for ev, part, st, inp in self._iter_console_tools(root) or []:
             cmd = str(inp.get("command") or inp.get("cmd") or "")
             if not cmd or cmd in _NOISE_ARGV or _is_noise_argv(cmd):
                 continue
@@ -2295,10 +2363,18 @@ class RunManager:
     def _scan_argv(self, argv: str, ts: str, downloads: list, dns_names: dict, net: dict, targets: list[str]) -> None:
         if not argv:
             return
-        if _DOWNLOAD_RE.search(argv):
-            m = _URL_RE.search(_CURL_PAYLOAD_RE.sub(" ", argv))
-            if m:
-                downloads.append({"ts": ts, "argv": argv[:400], "target": m.group(0)})
+        for m in _DOWNLOAD_TOOL_RE.finditer(argv):
+            body = m.group("body") or ""
+            if not _DOWNLOAD_OUT_RE.search(body):
+                continue
+            um = _FULL_URL_RE.search(_CURL_PAYLOAD_RE.sub(" ", body))
+            if not um:
+                continue
+            downloads.append({
+                "ts": ts,
+                "argv": argv[:400],
+                "target": um.group(0).rstrip(").,;\"'"),
+            })
         try:
             from internal.pocsrc import iter_fetch_urls
 
@@ -2320,6 +2396,36 @@ class RunManager:
             tool = (m.group("tool") or "").lower()
             body = m.group("body") or ""
             self._scan_net_call(tool, body, ts, dns_names, net, targets)
+        # URL suelta en el script, sin curl/wget.
+        if not re.search(r"\b(curl|wget|aria2c)\b", argv, re.I):
+            for u in _URL_RE.finditer(argv):
+                self._add_url_dest(u.group(0), ts, dns_names, net, targets, via="url")
+
+    def _scan_built_http(
+        self,
+        argv: str,
+        stdout: str,
+        ts: str,
+        dns_names: dict,
+        net: dict,
+        targets: list[str],
+    ) -> None:
+        """Host o URL anunciada cuando el script no deja la dirección entera."""
+        if not argv or not _HTTP_CLIENT_RE.search(argv):
+            return
+        if _BUILT_HTTP_RE.search(argv):
+            for m in _QUOTED_HOST_RE.finditer(argv):
+                host = m.group(1)
+                if self._skip_net_host(host):
+                    continue
+                self._add_url_dest(host, ts, dns_names, net, targets, via="url")
+        for i, line in enumerate((stdout or "").splitlines()):
+            if i >= 40 or len(line) > 240:
+                continue
+            um = _ANNOUNCED_URL_RE.match(line.strip())
+            if not um:
+                continue
+            self._add_url_dest(um.group(1).rstrip(").,;\"'"), ts, dns_names, net, targets, via="url")
 
     def _scan_net_call(
         self,

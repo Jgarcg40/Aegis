@@ -637,6 +637,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .status-badge.on { background: rgba(125,154,120,.15); color: var(--ok); }
 .status-badge.off { background: rgba(196,92,72,.14); color: var(--bad); }
 .model-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 14px; }
+.model-chips.scroll { max-height: 220px; overflow: auto; }
 .model-chips .chip { font-size: 10.5px; }
 .prov-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .endpoint-row { display: flex; gap: 8px; margin: 6px 0 12px; }

@@ -281,6 +281,13 @@ def run_host_logout(provider: str) -> int:
         if binary is None:
             raise SystemExit("Claude Code no está en PATH.")
         return subprocess.call([str(binary), "auth", "logout"])
+    if p in {"cursor", "cursor-agent"}:
+        from internal.cursorcli import agent_env, wrapper_bin
+
+        binary = wrapper_bin()
+        if binary is None:
+            return 0
+        return subprocess.call([str(binary), "logout"], env=agent_env())
     if p in {"codex", "codex-cli"}:
         from internal.codex import wrapper_bin
 

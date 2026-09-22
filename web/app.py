@@ -402,10 +402,11 @@ def make_handler(ctx: Ctx):
                 return self._json({"ok": True, **entry})
             if path == "/api/auth/apikey":
                 body = self._body()
+                provider = str(body.get("provider") or "")
                 from internal.auth import save_api_key
 
                 try:
-                    save_api_key(str(body.get("provider") or ""), str(body.get("key") or ""))
+                    save_api_key(provider, str(body.get("key") or ""))
                 except SystemExit as exc:
                     return self._err(str(exc), 422)
                 note_activated(ctx.cfg, str(body.get("provider") or ""))
@@ -512,6 +513,7 @@ def make_handler(ctx: Ctx):
                 "oauth": summarize_providers(auth),
                 "codex": __import__("internal.codex", fromlist=["auth_status"]).auth_status(),
                 "claude": __import__("internal.claude", fromlist=["auth_status"]).auth_status(),
+                "cursor": __import__("internal.cursorcli", fromlist=["auth_status"]).auth_status(),
             }
             _doctor_cache["ts"] = now
             _doctor_cache["payload"] = payload

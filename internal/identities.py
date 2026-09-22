@@ -2782,8 +2782,10 @@ def overlay_graph(graph: dict[str, Any], identities: list[dict[str, Any]]) -> di
         user = str(it.get("principal") or "").strip()
         if not host or not user:
             continue
+        from internal.engage import access_label
+
         hid = add_node("host", host, reachable=True)
-        aid = add_node("access", f"{user}@{host}", principal=user, parent=host, reachable=True)
+        aid = add_node("access", access_label(user, host), principal=user, parent=host, reachable=True)
         if not any(e.get("from") == hid and e.get("to") == aid for e in edges):
             edges.append({"from": hid, "to": aid, "via": it.get("via") or "access"})
     return {

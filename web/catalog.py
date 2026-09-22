@@ -17,6 +17,9 @@ from internal.codex import auth_status as codex_auth_status
 from internal.codex import list_models as codex_models
 from internal.codex import rust_bin as codex_bin
 from internal.codex import wrapper_bin as codex_wrapper_bin
+from internal.cursorcli import auth_status as cursor_auth_status
+from internal.cursorcli import list_models as cursor_models
+from internal.cursorcli import wrapper_bin as cursor_wrapper_bin
 from internal.config import Config
 from internal.models import _display_endpoint, _normalize_endpoint
 
@@ -351,6 +354,7 @@ def _build_catalog(cfg: Config, refresh: bool = False) -> dict:
     oc_models = [{"id": m["id"], "label": m["id"], "provider": m["provider"]} for m in models]
     cx = codex_auth_status()
     cl = claude_auth_status()
+    cu = cursor_auth_status()
     local = local_providers(cfg, probe=refresh)
     return {
         "providers": sorted(visible, key=lambda g: g["label"].lower()),
@@ -391,6 +395,15 @@ def _build_catalog(cfg: Config, refresh: bool = False) -> dict:
                 "expired": bool(cl.get("expired")),
                 "auth_mode": cl.get("auth_mode") or "",
                 "models": claude_models(refresh=refresh),
+            },
+            "cursor": {
+                "id": "cursor",
+                "label": "Cursor Agent",
+                "available": bool(cursor_wrapper_bin()),
+                "binary": str(cursor_wrapper_bin() or ""),
+                "logged_in": bool(cu.get("logged_in")),
+                "auth_mode": cu.get("auth_mode") or "",
+                "models": cursor_models(refresh=refresh),
             },
         },
     }

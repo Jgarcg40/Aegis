@@ -52,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     run_p.add_argument("--mode", choices=["full", "assess", "recon", "net"], default=None)
     run_p.add_argument(
         "--harness",
-        choices=["opencode", "codex", "claude"],
+        choices=["opencode", "codex", "claude", "cursor"],
         default="opencode",
         help="runtime del agente: OpenCode, Codex CLI (ChatGPT) o Claude Code",
     )
@@ -96,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     run_p.add_argument(
         "--backup-harness",
         default="",
-        help="harness de respaldo (opencode|codex|claude). Vacío = sin backup",
+        help="harness de respaldo (opencode|codex|claude|cursor). Vacío = sin backup",
     )
     run_p.add_argument(
         "--backup-model",
@@ -106,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
     run_p.add_argument(
         "--rescue-harness",
         default="",
-        help="harness de salvaguarda (opencode|codex|claude). Vacío = el del principal, o el de --rescue-model si va como harness::modelo",
+        help="harness de salvaguarda (opencode|codex|claude|cursor). Vacío = el del principal, o el de --rescue-model si va como harness::modelo",
     )
     run_p.add_argument(
         "--rescue-model",
@@ -305,6 +305,14 @@ def cmd_doctor(cfg) -> int:
         print(f"claude?:  ok {cl.get('auth_mode') or 'subscription'}")
     else:
         print("claude?:  deslogueado (claude auth login)")
+    from internal.cursorcli import auth_status as cursor_status
+
+    cu = cursor_status()
+    print(f"cursor:   {cu.get('binary') or 'AUSENTE (curl -fsS https://cursor.com/install | bash)'}")
+    if cu.get("logged_in"):
+        print(f"cursor?:  ok {cu.get('auth_mode') or 'login'}")
+    else:
+        print("cursor?:  deslogueado (Modelos → Login, suscripción)")
     auth = load_auth()
     creds = summarize_providers(auth)
     print(f"auth:     {host_auth_path()}")

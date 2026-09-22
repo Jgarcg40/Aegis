@@ -207,7 +207,7 @@ def rows_from_obj(obj: dict[str, Any], line_ts: str = "") -> list[dict[str, str]
                 out.append({"cls": "c-cmd", "text": _cmd_text(name, detail), "ts": ts})
         return out
     if typ == "system" and obj.get("subtype") == "init":
-        return [{"cls": "c-sys", "text": f"claude listo · {obj.get('model') or 'claude'}", "ts": ts}]
+        return [{"cls": "c-sys", "text": f"agente listo · {obj.get('model') or 'modelo'}", "ts": ts}]
     if typ == "result" and obj.get("is_error"):
         text = str(obj.get("result") or obj.get("error") or "").strip()
         # Corte nuestro (timeout/relevo/cierre): Claude deja result vacío.
@@ -246,9 +246,54 @@ def rows_from_obj(obj: dict[str, Any], line_ts: str = "") -> list[dict[str, str]
         return []
     if typ in {"item.started", "item.updated", "item.completed"}:
         return _codex_item_rows(obj, ts)
+    cursor_rows = _cursor_rows(obj, ts)
+    if cursor_rows:
+        return cursor_rows
     if typ == "error" or obj.get("error"):
         return [{"cls": "c-err", "text": _clip(obj.get("error") or obj.get("message") or "error"), "ts": ts}]
     return []
+
+
+def _cursor_rows(obj: dict[str, Any], ts: str) -> list[dict[str, str]]:
+    """Cursor Agent --output-format stream-json."""
+    tool = obj.get("tool_call") if isinstance(obj.get("tool_call"), dict) else {}
+    if tool:
+        for key, label in (
+            ("shellToolCall", "shell"),
+            ("bashToolCall", "bash"),
+            ("writeToolCall", "write"),
+            ("readToolCall", "read"),
+        ):
+            call = tool.get(key) if isinstance(tool.get(key), dict) else {}
+            args = call.get("args") if isinstance(call.get("args"), dict) else {}
+            detail = str(args.get("command") or args.get("path") or args.get("file_path") or "")
+            if obj.get("subtype") == "started":
+                return []
+            if not detail:
+                return []
+            result = call.get("result") if isinstance(call.get("result"), dict) else {}
+            body = result.get("success") if isinstance(result.get("success"), dict) else {}
+            if not body and isinstance(result.get("failure"), dict):
+                body = result["failure"]
+            code = body.get("exitCode")
+            failed = isinstance(code, int) and code != 0
+            tail = f" — exit {code}" if failed else ""
+            return [{"cls": "c-err" if failed else "c-cmd", "text": _cmd_text(label, detail, tail), "ts": ts}]
+        return []
+    if str(obj.get("type") or "") != "assistant":
+        return []
+    msg = obj.get("message") if isinstance(obj.get("message"), dict) else {}
+    parts = msg.get("content") if isinstance(msg.get("content"), list) else []
+    rows: list[dict[str, str]] = []
+    for part in parts:
+        if not isinstance(part, dict) or part.get("type") != "text":
+            continue
+        text = str(part.get("text") or "").strip()
+        if not text:
+            continue
+        cls = _classify_plain(text)
+        rows.append(_with_model({"cls": cls, "text": _row_text(cls, text), "ts": ts}, str(obj.get("model") or "")))
+    return rows
 
 
 def _codex_item_rows(obj: dict[str, Any], ts: str) -> list[dict[str, str]]:

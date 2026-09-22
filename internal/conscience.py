@@ -427,6 +427,13 @@ def _cmds_from_obj(obj: dict[str, Any]) -> list[str]:
             out.append(f"{tool or 'bash'}: {_clip_cmd(str(cmd))}")
         elif tool:
             out.append(tool)
+    if obj.get("type") == "tool_call" and obj.get("subtype") == "completed":
+        tool = obj.get("tool_call") if isinstance(obj.get("tool_call"), dict) else {}
+        call = tool.get("shellToolCall") if isinstance(tool.get("shellToolCall"), dict) else {}
+        args = call.get("args") if isinstance(call.get("args"), dict) else {}
+        cmd = str(args.get("command") or "").strip()
+        if cmd:
+            out.append(_clip_cmd(cmd))
     if obj.get("type") in {"item.completed", "item.started", "command"}:
         cmd = obj.get("command") or (obj.get("item") or {}).get("command") if isinstance(obj.get("item"), dict) else ""
         if cmd:
@@ -819,7 +826,7 @@ def fail_detail(raw: str, blocked: bool) -> str:
         return "sin respuesta (timeout o error)"
     low = blob.lower()
     if "permission denied" in low or "eacces" in low:
-        return "el juez no pudo escribir la sesión de OpenCode"
+        return "el juez no pudo escribir su sesión"
     one = re.sub(r"\s+", " ", blob)
     if "stuck" not in blob:
         return ("el juez no devolvió JSON: " + one[:160]).strip()
@@ -1072,6 +1079,7 @@ def write_backend(
     claude_home: Path | None = None,
     codex_bin: Path | None = None,
     codex_home: Path | None = None,
+    cursor_bin: Path | None = None,
     xdg_data_home: Path | None = None,
 ) -> Path:
     """El juez usa la misma cuenta/harness que el run. Sin campo extra en Lanzar."""
@@ -1085,6 +1093,7 @@ def write_backend(
                 "claude_home": str(claude_home) if claude_home else "",
                 "codex_bin": str(codex_bin) if codex_bin else "",
                 "codex_home": str(codex_home) if codex_home else "",
+                "cursor_bin": str(cursor_bin) if cursor_bin else "",
                 "xdg_data_home": str(xdg_data_home) if xdg_data_home else "",
             },
             indent=2,
@@ -1220,6 +1229,8 @@ def _call_harness_prompt(
         return _shot_claude(cfg, prompt, cwd=cwd, timeout=timeout)
     if h == "codex":
         return _shot_codex(cfg, out_dir, prompt, cwd=cwd, timeout=timeout)
+    if h == "cursor":
+        return _shot_cursor(cfg, prompt, cwd=cwd, timeout=timeout)
     return _shot_opencode(cfg, out_dir, prompt, cwd=cwd, timeout=timeout)
 
 
@@ -1282,6 +1293,45 @@ def call_llm_text(
     if backend["kind"] == "anthropic":
         return _call_anthropic(backend, user, system=system, max_tokens=max_tokens)
     return _call_openai(backend, user, system=system, max_tokens=max_tokens)
+
+
+def _shot_cursor(
+    cfg: dict[str, Any],
+    prompt: str,
+    *,
+    cwd: Path | None = None,
+    timeout: int | None = None,
+) -> str:
+    from internal.cursorcli import wrapper_bin
+
+    bin_p = Path(str(cfg.get("cursor_bin") or ""))
+    if not bin_p.is_file():
+        found = wrapper_bin()
+        bin_p = found if found is not None else bin_p
+    if not bin_p.is_file():
+        return ""
+    from internal.cursorcli import agent_env
+
+    env = agent_env()
+    judge_home = Path(env["HOME"])
+    model = _harness_model(str(cfg.get("model") or ""))
+    work = cwd or judge_home
+    args = [
+        str(bin_p),
+        "--print",
+        "--force",
+        "--trust",
+        "--sandbox",
+        "disabled",
+        "--output-format",
+        "text",
+        "--workspace",
+        str(work),
+    ]
+    if model and model != "auto":
+        args += ["--model", model]
+    args.append(prompt)
+    return _run_cmd(args, env, cwd=work, timeout=timeout)
 
 
 def _shot_claude(

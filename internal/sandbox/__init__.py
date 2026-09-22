@@ -83,6 +83,24 @@ def container_name(run_id: str) -> str:
     return f"{CONTAINER_PREFIX}{run_id}"
 
 
+def _cursor_cli_config_seed(host_out: Path) -> Path | None:
+    """Copia cli-config.json al run. No monta el original."""
+    candidates = [
+        Path.home() / ".cache" / "aegis" / "cursor-home" / ".cursor" / "cli-config.json",
+        Path.home() / ".cursor" / "cli-config.json",
+    ]
+    src = next((p for p in candidates if p.is_file() and os.access(p, os.R_OK)), None)
+    if src is None:
+        return None
+    dest = host_out / ".cursor-cli-config.json"
+    try:
+        shutil.copy2(src, dest)
+        os.chmod(dest, 0o600)
+    except OSError:
+        return None
+    return dest
+
+
 def start(
     *,
     cfg: Config,
@@ -101,6 +119,7 @@ def start(
     codex_home: Path | None = None,
     claude_bin: Path | None = None,
     claude_home: Path | None = None,
+    cursor_dir: Path | None = None,
     persist: bool = True,
     continue_prompt: str = "",
     backup_harness: str = "",
@@ -148,6 +167,9 @@ def start(
         "AEGIS_QUIET": "1" if quiet else "0",
         "AEGIS_CONSCIENCE": os.environ.get("AEGIS_CONSCIENCE", "1"),
         "AEGIS_TIMEOUT_EPOCH": str(int(time.time() + timeout_s)) if timeout_s > 0 else "",
+        # El entrypoint devuelve estos ficheros al uid del host.
+        "AEGIS_HOST_UID": str(os.getuid()),
+        "AEGIS_HOST_GID": str(os.getgid()),
     }
     if not smoke:
         env.update(rescue_env(harness, resolved, rescue_model, rescue_harness))
@@ -287,6 +309,18 @@ def start(
                 args += ["--tmpfs", "/tmp/claude-home:mode=0700,size=256m"]
         else:
             args += ["--tmpfs", "/tmp/claude-home:mode=0700,size=256m"]
+    if harness == "cursor" or backup_harness == "cursor" or rescue_harness == "cursor":
+        if cursor_dir is not None and cursor_dir.is_dir():
+            args += ["-v", f"{cursor_dir.resolve()}:/opt/aegis/cursor-cli:ro"]
+        from internal.cursorcli import auth_dir as cursor_auth_dir
+
+        session = cursor_auth_dir()
+        if session.is_dir():
+            args += ["-v", f"{session.resolve()}:/root/.config/cursor:rw"]
+        # ~/.cursor no se monta. La config se copia dentro del contenedor.
+        seed = _cursor_cli_config_seed(host_out)
+        if seed is not None:
+            args += ["-v", f"{seed.resolve()}:/opt/aegis/cursor-cli-config.json:ro"]
     if network == "bridge":
         args += ["--add-host", "host.docker.internal:host-gateway"]
     if host_inbox is not None:

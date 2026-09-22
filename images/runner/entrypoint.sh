@@ -389,7 +389,7 @@ looks_refused() {
   fi
   blob+=$(tail -c 16000 "$OUT/console.log" 2>/dev/null || true)
   printf '%s' "$blob" | grep -qiE \
-    "i('m| am) (sorry|unable)|i (can[’']?t|cannot|won[’']?t) (help|assist|do that|run|continue|read)|not able to (help|assist)|against (my |the )?(usage )?policy|violat(es|ing) (the )?(usage )?policy|safety policy|cannot assist with|won[’']?t (help|continue|run|read)|off-limits|offensive help|disallowed|i must refuse|i have to refuse|no\\.? i can.?t help|no puedo (ayudar|asistir|hacer eso|realizar)|no voy a (realizar|ejecutar|continuar|atacar|cumplir|iniciar)|sigo sin (ejecutar|poder)|no lo (haré|hago)|no cambio de criterio|deja de insistir|procedimientos de compromiso|política de (uso|seguridad)|salvaguarda|safeguards flagged|cyber-related safeguards|cyber verification program|cyber_policy|turn\\.failed|model_refusal|api_refusal_category.:.cyber|stop_reason.:.refusal|refused to (continue|comply)|flagged for (possible )?(cybersecurity|safety|policy)|cybersecurity risk|trusted access for cyber|chatgpt\\.com/cyber|offensive exploitation|engagement ofensivo|trabajo ofensivo"
+    "i('m| am) (sorry|unable)|i (can[’']?t|cannot|won[’']?t) (help|assist|do that|run|continue|read)|not able to (help|assist)|against (my |the )?(usage )?policy|violat(es|ing) (the )?(usage )?policy|safety policy|cannot assist with|won[’']?t (help|continue|run|read)|off-limits|offensive help|disallowed|i must refuse|i have to refuse|no\\.? i can.?t help|no puedo (ayudar|asistir|hacer eso|realizar)|no voy a (realizar|ejecutar|continuar|atacar|cumplir|iniciar)|sigo sin (ejecutar|poder)|no lo (haré|hago)|no cambio de criterio|deja de insistir|procedimientos de compromiso|política de (uso|seguridad)|salvaguarda|safeguards flagged|cyber-related safeguards|cyber verification program|cyber_policy|turn\\.failed|model_refusal|api_refusal_category.:.cyber|stop_reason.:.refusal|refused to (continue|comply)|flagged for (possible )?(cybersecurity|safety|policy)|cybersecurity risk|trusted access for cyber|chatgpt\\.com/cyber|offensive exploitation|engagement ofensivo|trabajo ofensivo|request blocked by anthropic|restrictions on cyber content|actionrequirederror"
 }
 
 warmup_pending() {
@@ -1768,7 +1768,7 @@ _blocked_vector_steer() {
   dead=$(_blocked_cve_list | paste -sd', ' - 2>/dev/null || true)
   ports=$(grep -aiE '^ports=' "$OUT/RESUME.md" 2>/dev/null | head -1 | cut -d= -f2- | tr -d ' ' || true)
   quiet=""
-  [[ "$HARNESS" == "opencode" || "$HARNESS" == "codex" ]] && quiet=1
+  [[ "$HARNESS" == "opencode" || "$HARNESS" == "codex" || "$HARNESS" == "cursor" ]] && quiet=1
   [[ -z "$quiet" ]] && lead="Lab autorizado del operador. Scope: solo el host de RESUME.md. Auditoría, no daño. "
   hard=""
   [[ "$n" -ge 2 ]] && hard="Ya has reincidido ${n} veces en un vector MUERTO; deja de insistir en él. "
@@ -2974,6 +2974,7 @@ fi
 
 CLAUDEBIN=""
 CODEBIN=""
+CURSORBIN=""
 
 resolve_claude_bin() {
   [[ -n "$CLAUDEBIN" ]] && return 0
@@ -2989,6 +2990,107 @@ resolve_claude_bin() {
   if [[ -z "$CLAUDEBIN" ]]; then
     echo "[aegis] FATAL: binario Claude Code no montado en /opt/aegis/claude" >&2
     return 1
+  fi
+}
+
+# auth.json del host: el proceso es root y el rename lo dejaría suyo.
+own_cursor_auth() {
+  [[ -n "${AEGIS_HOST_UID:-}" && -d /root/.config/cursor ]] || return 0
+  chown -R "${AEGIS_HOST_UID}:${AEGIS_HOST_GID:-$AEGIS_HOST_UID}" /root/.config/cursor 2>/dev/null || true
+}
+
+resolve_cursor_bin() {
+  [[ -n "$CURSORBIN" ]] && return 0
+  if [[ -x /opt/aegis/cursor-cli/cursor-agent ]]; then
+    CURSORBIN=/opt/aegis/cursor-cli/cursor-agent
+    mkdir -p /root/.cursor
+    # Copia: el agente renombra cli-config.json al arrancar.
+    if [[ ! -f /root/.cursor/cli-config.json && -f /opt/aegis/cursor-cli-config.json ]]; then
+      cp /opt/aegis/cursor-cli-config.json /root/.cursor/cli-config.json
+      chmod 600 /root/.cursor/cli-config.json || true
+    fi
+    own_cursor_auth
+    if [[ ! -f /tmp/aegis-cursor-own.pid ]]; then
+      ( while true; do own_cursor_auth; sleep 20; done ) >/dev/null 2>&1 &
+      echo $! >/tmp/aegis-cursor-own.pid
+    fi
+    return 0
+  fi
+  echo "[aegis] FATAL: Cursor Agent no montado en /opt/aegis/cursor-cli" >&2
+  return 1
+}
+
+cursor_capture_last() {
+  python3 - "$OUT/console.log" "$OUT/last-message.txt" <<'PY'
+import json, sys
+from pathlib import Path
+src, dest = Path(sys.argv[1]), Path(sys.argv[2])
+if not src.is_file():
+    raise SystemExit(0)
+text = ""
+for line in src.read_text(encoding="utf-8", errors="replace").splitlines():
+    line = line.strip()
+    if not line.startswith("{"):
+        continue
+    try:
+        obj = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    if obj.get("type") != "assistant":
+        continue
+    msg = obj.get("message") if isinstance(obj.get("message"), dict) else {}
+    parts = msg.get("content") if isinstance(msg.get("content"), list) else obj.get("content")
+    if isinstance(parts, list):
+        bits = []
+        for p in parts:
+            if isinstance(p, dict) and p.get("type") == "text" and (p.get("text") or "").strip():
+                bits.append(p["text"].strip())
+        if bits:
+            text = "\n".join(bits)
+    elif isinstance(obj.get("text"), str) and obj["text"].strip():
+        text = obj["text"].strip()
+if text:
+    dest.write_text(text + "\n", encoding="utf-8")
+PY
+}
+
+run_cursor_turn() {
+  resolve_cursor_bin || { RC=1; return; }
+  local ARGS=(--print --force --trust --sandbox disabled
+        --output-format stream-json --workspace "$WS")
+  if [[ -n "$MODEL" && "$MODEL" != "auto" ]]; then
+    ARGS+=(--model "$MODEL")
+  fi
+  local use_continue=0
+  if [[ "$ITER" -gt 1 && ! -f "$OUT/.pivot-new-session" ]]; then
+    use_continue=1
+  fi
+  if [[ -f "$OUT/.pivot-new-session" ]]; then
+    rm -f "$OUT/.pivot-new-session"
+    logc "[aegis] — corte de sesión. No --continue. Contexto: RESUME.md. —"
+  fi
+  if [[ "$use_continue" -eq 1 ]]; then
+    # --continue sin chat previo sale al momento.
+    if [[ -d /root/.cursor/chats ]] && [[ -n "$(find /root/.cursor/chats -mindepth 1 -print -quit 2>/dev/null)" ]]; then
+      ARGS+=(--continue)
+    else
+      use_continue=0
+      logc "[aegis] — sin chat previo de Cursor; turno nuevo. —"
+    fi
+  fi
+  if [[ "$ITER" -eq 1 ]]; then ARGS+=("$PROMPT"); else ARGS+=("$(continue_text "$use_continue")"); fi
+  echo "[aegis] cursor print model=${MODEL:-} iter=${ITER} continue=$([[ "$use_continue" -eq 1 ]] && echo yes || echo no)" >&2
+  T0=$(date +%s)
+  set +e
+  "${SETSID[@]}" "$CURSORBIN" "${ARGS[@]}" >>"$OUT/console.log" 2>&1 &
+  set -e
+  watch_agent $!
+  DUR=$(( $(date +%s) - T0 ))
+  echo "[aegis] cursor print exit=${RC} iter=${ITER} dur=${DUR}s" >&2
+  cursor_capture_last || true
+  own_cursor_auth
+  if [[ -s "$OUT/last-message.txt" ]]; then
+    logc "[agente] $(tr '\n' ' ' <"$OUT/last-message.txt" | head -c 900)"
   fi
 }
 
@@ -3237,6 +3339,7 @@ while true; do
   case "$HARNESS" in
     claude) run_claude_turn ;;
     codex) run_codex_turn ;;
+    cursor) run_cursor_turn ;;
     *) run_opencode_turn ;;
   esac
   should_continue || break

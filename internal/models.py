@@ -82,6 +82,7 @@ GROK_WARMUP_ID = "xai/grok-4.3"
 GROK_WARMUP_S = 120
 # 4.3 acepta none|low|medium|high. Off: en 120 s deja estado y 4.6 no ve el brief crudo.
 GROK_WARMUP_REASONING = "none"
+HARNESS_IDS = frozenset({"opencode", "codex", "claude", "cursor"})
 CLAUDE_RESCUE_DEFAULT = "claude-sonnet-4-6"
 CODEX_RESCUE_DEFAULT = "gpt-5.4"
 CODEX_RESCUE_SOFT = "gpt-5.4-mini"
@@ -148,6 +149,8 @@ def default_rescue_model(harness: str, resolved: ResolvedModel) -> str:
         return CLAUDE_RESCUE_DEFAULT
     if h == "codex":
         return _openai_family_rescue(resolved.opencode_id)
+    if h == "cursor":
+        return ""
     if h == "opencode":
         provider = (resolved.spec.provider or "").strip().lower()
         if provider == "xai":
@@ -173,6 +176,8 @@ def _normalize_rescue_id(harness: str, raw: str) -> str:
         return ""
     if h == "codex":
         return raw.rsplit("/", 1)[-1]
+    if h == "cursor":
+        return raw.rsplit("/", 1)[-1]
     if h == "claude":
         return raw.rsplit("/", 1)[-1]
     if h == "opencode" and "/" not in raw:
@@ -193,14 +198,14 @@ def split_rescue_ref(raw: str) -> tuple[str, str]:
         h, m = s.split("::", 1)
         h = h.strip().lower()
         m = m.strip()
-        if h in {"opencode", "codex", "claude"} and m:
+        if h in HARNESS_IDS and m:
             return h, m
     return "", s
 
 
 def infer_rescue_harness(primary: str, model: str, explicit: str = "") -> str:
     h = (explicit or "").strip().lower()
-    if h in {"opencode", "codex", "claude"}:
+    if h in HARNESS_IDS:
         return h
     m = (model or "").strip()
     if not m:
@@ -222,7 +227,7 @@ def resolve_rescue(
     if rh_from_ref:
         raw = rm
     explicit_h = (rescue_harness or rh_from_ref or "").strip().lower()
-    if explicit_h not in {"opencode", "codex", "claude"}:
+    if explicit_h not in HARNESS_IDS:
         explicit_h = ""
     if raw.lower() in {"", "auto", "default"}:
         raw = default_rescue_model(harness, resolved)

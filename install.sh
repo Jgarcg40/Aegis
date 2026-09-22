@@ -80,12 +80,12 @@ Uso: ./install.sh [opciones]
   --wipe          para la UI (también el python huérfano), quita la unidad systemd
   --wipe-clis     con --wipe: también OpenCode, Claude Code, Codex y sus homes
   ./uninstall.sh  Aegis entero (UI, leftover, imagen runner, árbol). Docker y CLI no.
-  -y, --yes       no pregunta; instala también OpenCode, Claude Code y Codex
+  -y, --yes       no pregunta; instala también OpenCode, Claude Code, Codex y Cursor Agent
   -h, --help      esta ayuda
 
-OpenCode, Claude Code y Codex son opcionales: se pregunta uno a uno
-(Enter = no). Si los instalas luego a mano, la UI los detecta al
-refrescar Modelos. Las suscripciones se activan ahí; este script
+OpenCode, Claude Code, Codex y Cursor Agent son opcionales: se pregunta
+uno a uno (Enter = no). Si los instalas luego a mano, la UI los detecta
+al refrescar Modelos. Las suscripciones se activan ahí; este script
 no abre logins.
 
 Sudo: pregunta en la terminal y luego la contraseña UNA vez, solo
@@ -938,6 +938,44 @@ install_codex() {
   return 0
 }
 
+install_cursor() {
+  step "5b" "Cursor Agent (host)"
+  ensure_path
+  if [[ -x "$HOME/.local/bin/agent" ]] || have agent; then
+    ok "Cursor Agent $(ver_of agent || "$HOME/.local/bin/agent" --version 2>/dev/null | head -1)"
+    return 0
+  fi
+  if (( DO_CHECK )); then
+    warn "Cursor Agent no está (opcional; harness Cursor)"
+    note "curl -fsS https://cursor.com/install | bash"
+    MISSING+=("Cursor Agent")
+    return 1
+  fi
+  if ! ask_optional "¿Instalo Cursor Agent? Solo para el harness Cursor"; then
+    ok "Cursor Agent omitido"
+    note "luego: curl -fsS https://cursor.com/install | bash"
+    note "Aegis lo detecta al refrescar Modelos; el login es la suscripción"
+    return 0
+  fi
+  if ! have curl; then
+    fail "sin curl no instalo Cursor Agent"
+    MISSING+=("Cursor Agent")
+    return 1
+  fi
+  info "descargo el instalador oficial → ~/.local/bin/agent"
+  if run_official_script "https://cursor.com/install" bash; then
+    ensure_path
+    if [[ -x "$HOME/.local/bin/agent" ]] || have agent; then
+      ok "Cursor Agent $(ver_of agent || "$HOME/.local/bin/agent" --version 2>/dev/null | head -1)"
+      return 0
+    fi
+  fi
+  fail "el instalador de Cursor Agent no dejó binario"
+  note "curl -fsS https://cursor.com/install | bash"
+  MISSING+=("Cursor Agent")
+  return 1
+}
+
 layout_data() {
   step "6/8" "Árbol data/ y permisos"
   mkdir -p "$ROOT/data/runs" "$ROOT/data/web/inbox"
@@ -1200,6 +1238,7 @@ fi
 install_opencode || true
 install_claude || true
 install_codex || true
+install_cursor || true
 if (( ! DO_CHECK )); then
   if ! layout_data; then
     summary

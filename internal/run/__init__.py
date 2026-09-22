@@ -54,8 +54,12 @@ from internal.inbox import InboxError, materialize
 from internal.conscience import _logc, write_backend
 from internal.jobs import detach_resume_links, seed_resume, write_steer
 from internal.config import Config, ModelSpec, parse_duration
+from internal.cursorcli import install_dir as cursor_install_dir
+from internal.cursorcli import logged_in as cursor_logged_in
+from internal.cursorcli import wrapper_bin as cursor_wrapper_bin
 from internal.models import (
     GROK_WARMUP_S,
+    HARNESS_IDS,
     ResolvedModel,
     grok_opencode_warmup,
     opencode_config,
@@ -585,8 +589,8 @@ def _resolve_for_harness(
     role: str = "principal",
 ) -> ResolvedModel:
     harness = (harness or "opencode").strip().lower()
-    if harness not in {"opencode", "codex", "claude"}:
-        raise SystemExit(f"harness desconocido: {harness}. Usa opencode, codex o claude")
+    if harness not in HARNESS_IDS:
+        raise SystemExit(f"harness desconocido: {harness}. Usa opencode, codex, claude o cursor")
     where = {"backup": "de respaldo", "rescue": "de salvaguarda"}.get(role, "principal")
     if harness == "claude":
         # alias "claude" o vacío → modelo por defecto del yaml, no el literal
@@ -622,6 +626,38 @@ def _resolve_for_harness(
             raise SystemExit(
                 "no encuentro el binario nativo de Claude Code. "
                 "Instálalo o exporta CLAUDE_BIN (esperado en ~/.local/bin/claude)"
+            )
+        return resolved
+    if harness == "cursor":
+        requested = (model_id or model_alias or "").strip()
+        if requested.lower() in ("", "cursor"):
+            requested = ""
+        slug = requested.rsplit("/", 1)[-1]
+        try:
+            resolved = resolve_model(cfg, "cursor", model_id=slug, endpoint=endpoint)
+        except SystemExit:
+            from internal.config import ModelSpec
+
+            resolved = ResolvedModel(
+                spec=ModelSpec(alias="cursor", provider="cursor", model=slug or "auto"),
+                opencode_id=slug or "auto",
+                endpoint="",
+                env={},
+                missing_keys=[],
+                auth_provider="cursor",
+                auth_via="cursor-cli",
+            )
+        if slug:
+            resolved.spec.model = slug
+            resolved.opencode_id = slug
+        if not smoke and not cursor_logged_in():
+            raise SystemExit(
+                f"Cursor no está logueado en el host (modelo {where}). "
+                "En Modelos: Login (suscripción de Cursor)"
+            )
+        if not smoke and cursor_install_dir() is None:
+            raise SystemExit(
+                "no encuentro Cursor Agent. En el host: curl -fsS https://cursor.com/install | bash"
             )
         return resolved
     if harness == "codex":
@@ -712,8 +748,8 @@ def execute(
     if image:
         cfg.image = image
     harness = (harness or "opencode").strip().lower()
-    if harness not in {"opencode", "codex", "claude"}:
-        raise SystemExit(f"harness desconocido: {harness}. Usa opencode, codex o claude")
+    if harness not in HARNESS_IDS:
+        raise SystemExit(f"harness desconocido: {harness}. Usa opencode, codex, claude o cursor")
     resume_id = (resume or "").strip()
     resume_src: Path | None = None
     if resume_id:
@@ -780,9 +816,9 @@ def execute(
     if backup_model:
         if not backup_harness:
             backup_harness = "opencode"
-        if backup_harness not in {"opencode", "codex", "claude"}:
+        if backup_harness not in HARNESS_IDS:
             raise SystemExit(
-                f"harness de respaldo desconocido: {backup_harness}. Usa opencode, codex o claude"
+                f"harness de respaldo desconocido: {backup_harness}. Usa opencode, codex, claude o cursor"
             )
         if backup_harness == harness and backup_model in {model_alias, resolved.opencode_id}:
             backup_harness = ""
@@ -821,7 +857,7 @@ def execute(
     has_inbox = bool(inbox_files)
 
     grok_safe = harness == "opencode" and resolved.spec.provider == "xai"
-    quiet = grok_safe or harness == "codex" or resolved.spec.provider == "openai"
+    quiet = grok_safe or harness in {"codex", "cursor"} or resolved.spec.provider == "openai"
     ctf = bool(ctf_contract and ctf_contract.get("enabled"))
     if not ctf:
         inherited = load_contract(paths["root"])
@@ -1029,6 +1065,7 @@ def execute(
             else:
                 cx_model = backup_resolved.opencode_id
             write_codex_config(staged_cx.home, cx_model)
+        need_cursor = harness == "cursor" or backup_harness == "cursor" or rescue_harness == "cursor"
         need_claude = harness == "claude" or backup_harness == "claude" or rescue_harness == "claude"
         if need_claude and not smoke:
             staged_cl = stage_claude(run_id)
@@ -1060,6 +1097,7 @@ def execute(
             codex_home=staged_cx.home if staged_cx else None,
             claude_bin=claude_rust_bin() if need_claude else None,
             claude_home=staged_cl.home if staged_cl else None,
+            cursor_dir=cursor_install_dir() if need_cursor else None,
             persist=persist and not smoke,
             continue_prompt=continuation_prompt(mode, grok_safe=grok_safe, ctf=ctf),
             backup_harness=backup_harness,
@@ -1106,6 +1144,7 @@ def execute(
             claude_home=staged_cl.home if staged_cl else None,
             codex_bin=codex_rust_bin() if need_codex else None,
             codex_home=staged_cx.home if staged_cx else None,
+            cursor_bin=cursor_wrapper_bin() if need_cursor else None,
             xdg_data_home=staged.xdg_data_home if staged else None,
         )
         (paths["root"] / ".serve").write_text(
@@ -1373,7 +1412,8 @@ def mark_ctf_complete_at(root: Path, now: float | None = None) -> tuple[float, b
     if not _write_stamp(path, ts):
         return ts, False
     mark_doc_grace_at(root, "ctf", now=ts)
-    write_close_doc_steer(root, cut=False)
+    # Corta el turno en curso para que el comprobador use la prórroga.
+    write_close_doc_steer(root, cut=True)
     announce_ctf_doc(root)
     return ts, True
 
@@ -1387,7 +1427,7 @@ def begin_doc_grace(root: Path, why: str, *, cut: bool = False, now: float | Non
         _, created = mark_doc_grace_at(root, why, now=now)
         if created:
             announce_doc_grace(root, why)
-    wrote = write_close_doc_steer(root, cut=cut and why != "ctf")
+    wrote = write_close_doc_steer(root, cut=cut or why == "ctf")
     return created or wrote
 
 
@@ -1663,7 +1703,7 @@ def _watch_once(cfg: Config, rid: str, root: Path) -> int:
     )
     stats.hydrate(root / "stats.json")
     harness = str(meta.get("harness") or "opencode")
-    quiet = harness == "codex" or model.lower().startswith(("xai/", "openai/"))
+    quiet = harness in {"codex", "cursor"} or model.lower().startswith(("xai/", "openai/"))
     sidecar = Sidecar(
         run_id=rid,
         sandbox=sandbox,

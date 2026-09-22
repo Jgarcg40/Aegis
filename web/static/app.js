@@ -329,6 +329,7 @@ const HARNESS_CHOICES = [
   { id: "opencode", label: "OpenCode — Grok, ChatGPT, gateway, local" },
   { id: "codex", label: "Codex CLI — tu login de ChatGPT" },
   { id: "claude", label: "Claude Code — tu login de Claude.ai" },
+  { id: "cursor", label: "Cursor Agent — modelos de tu cuenta Cursor" },
 ];
 
 function harnessReady(cat, h) {
@@ -512,6 +513,8 @@ async function _refreshHeader(opts) {
   mini.appendChild(line(!!d.opencode, "OpenCode", d.opencode ? "listo" : "falta", "Binario de OpenCode en el host (el harness/cerebro que corre en el sandbox)."));
   mini.appendChild(line(!!cx.logged_in, "Codex", cx.logged_in ? (cx.auth_mode || "ChatGPT") : (cx.binary ? "sin login" : "ausente"), "Codex CLI en el host (harness). Login: Sign in with ChatGPT. Ausente = no hay binario; instálalo y refresca Modelos."));
   mini.appendChild(line(!!cl.logged_in, "Claude Code", cl.logged_in ? (cl.auth_mode || "suscripción") : (cl.expired ? "caducado" : (cl.binary ? "sin login" : "ausente")), "Claude Code nativo en el host (harness). Login: claude auth login. «Logueado» si el access vale o el refresh aún sirve (se renueva al lanzar). Caducado = hay que hacer login otra vez."));
+  const cu = d.cursor || {};
+  mini.appendChild(line(!!cu.logged_in, "Cursor", cu.logged_in ? "suscripción" : (cu.binary ? "sin login" : "ausente"), "Cursor Agent en el host. Login de la suscripción en Modelos (agent login)."));
 
   const warn = $("#warnings");
   warn.innerHTML = "";
@@ -695,6 +698,7 @@ function costCaption(run, s) {
   if (harness === "claude" || /claude|opus|sonnet|haiku/i.test(model)) return "Claude / Anthropic";
   if (harness === "codex" || /codex|gpt-/i.test(model)) return "Codex / OpenAI";
   if (/xai|grok/i.test(model)) return "OpenCode / xAI";
+  if (harness === "cursor") return "Cursor";
   if (harness === "opencode") return "OpenCode";
   return harness || "modelo";
 }
@@ -1025,7 +1029,7 @@ function renderRunDetail(view, run) {
         el("div", { class: "rd-title" }, el("h1", {}, runTitle(r)), statusBadge(r)),
         el("div", { class: "rd-meta" },
           el("span", { class: "rd-id" }, fmtRunWhen(r) + " · " + runId + (targets && targets !== runTitle(r) ? " · " + targets : "")),
-          el("span", { class: "chip", title: "Harness: el cerebro que corre en el sandbox (OpenCode / Codex / Claude Code)." }, "harness ", el("b", {}, r.harness || "opencode")),
+          el("span", { class: "chip", title: "Harness: el cerebro que corre en el sandbox (OpenCode / Codex / Claude Code / Cursor)." }, "harness ", el("b", {}, r.harness || "opencode")),
           r.harness === "codex" ? el("span", { class: "chip" }, "stateless: vive del disco") : false,
           el("span", { class: "chip", title: "Modo de operación: full / assess / recon / net (marca hasta dónde puede llegar el agente)." }, "modo ", el("b", {}, r.mode || "?")),
           ctfChip(r),
@@ -1582,7 +1586,7 @@ function formatOpevent(ev) {
     return rows.length ? rows : null;
   }
   if (type === "system" && ev.subtype === "init") {
-    return { cls: "c-sys", text: `claude listo · ${ev.model || "claude"}`, ts: ev.timestamp || ts };
+    return { cls: "c-sys", text: `agente listo · ${ev.model || "modelo"}`, ts: ev.timestamp || ts };
   }
   if (type === "result" && ev.is_error) {
     const text = String(ev.result || ev.error || "").trim();
@@ -1612,6 +1616,22 @@ function formatOpevent(ev) {
     const err = st.error || st.status === "error";
     const tail = err ? ` — ${st.error || "error"}` : "";
     return { cls: err ? "c-err" : "c-cmd", text: `$ ${tool}${detail ? "  " + String(detail).slice(0, 360) : ""}${tail}`, ts };
+  }
+  if (type === "tool_call") {
+    if (ev.subtype !== "completed") return null;
+    const tool = ev.tool_call && typeof ev.tool_call === "object" ? ev.tool_call : {};
+    const call = tool.shellToolCall && typeof tool.shellToolCall === "object" ? tool.shellToolCall : null;
+    const args = call && call.args && typeof call.args === "object" ? call.args : {};
+    const cmd = String(args.command || "").trim();
+    if (!cmd) return null;
+    const result = call.result && typeof call.result === "object" ? call.result : {};
+    const body = (result.success && typeof result.success === "object" && result.success)
+      || (result.failure && typeof result.failure === "object" && result.failure)
+      || {};
+    const code = body.exitCode;
+    const failed = Number.isInteger(code) && code !== 0;
+    const tail = failed ? ` — exit ${code}` : "";
+    return { cls: failed ? "c-err" : "c-cmd", text: `$ bash  ${cmd.slice(0, 360)}${tail}`, ts };
   }
   if (type === "thread.started" || type === "turn.started" || type === "turn.completed") return null;
   if (type === "item.started" || type === "item.updated" || type === "item.completed") {
@@ -2251,7 +2271,8 @@ function drawNetGraph(graph) {
     const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
     t.setAttribute("x", p.x + 14); t.setAttribute("y", p.y + 4);
     t.setAttribute("class", "net-label");
-    t.textContent = (n.label || n.id || "").slice(0, 28);
+    const label = n.label || n.id || "";
+    t.textContent = label.length > 42 ? label.slice(0, 41) + "…" : label;
     g.appendChild(c); g.appendChild(t); svg.appendChild(g);
   }
   return svg;
@@ -2991,6 +3012,13 @@ async function renderLanzar(view, gen) {
       if (!(cx.models || []).length && cx.logged_in) addOpt(sel, "gpt-5.6-sol", "gpt-5.6-sol");
       return;
     }
+    if (h === "cursor") {
+      const cu = harnesses.cursor || {};
+      if (!cu.logged_in) sel.appendChild(el("option", { value: "" }, "(Cursor sin login — ve a Modelos)"));
+      for (const m of (cu.models || [])) addOpt(sel, m.id, m.label || m.id);
+      if (!(cu.models || []).length && cu.logged_in) sel.appendChild(el("option", { value: "" }, "(sin modelos — pulsa Refrescar catálogo)"));
+      return;
+    }
     if (h === "claude") {
       const clh = harnesses.claude || {};
       if (!clh.logged_in) sel.appendChild(el("option", { value: "" }, "(Claude Code sin login — ve a Modelos)"));
@@ -3062,7 +3090,7 @@ async function renderLanzar(view, gen) {
     if (primaryXai && destIsXai) {
       rescueHint.textContent = "Suscripción xAI en OpenCode: el relevo empieza un minuto en 4.3 y sigue en 4.6. Go, Zen u otra cuenta no usan ese perfil. El resto de combinaciones abre una ficha nueva. El backup es otra cosa: solo crédito o sesión.";
     } else {
-      rescueHint.textContent = "Cualquier modelo: otra sub de OpenCode (Go, Zen, SuperGrok…) u otro harness (Claude Code / Codex). Si el principal no puede seguir, este abre una ficha y luego vuelve. El arranque de 60 s en 4.3 solo aplica de xAI a xAI en OpenCode. El backup es otra cosa: solo crédito o sesión.";
+      rescueHint.textContent = "Cualquier modelo: otra sub de OpenCode (Go, Zen, SuperGrok…) u otro harness (Claude Code / Codex / Cursor). Si el principal no puede seguir, este abre una ficha y luego vuelve. El arranque de 60 s en 4.3 solo aplica de xAI a xAI en OpenCode. El backup es otra cosa: solo crédito o sesión.";
     }
   };
   const fillRescueModels = () => {
@@ -3136,6 +3164,22 @@ async function renderLanzar(view, gen) {
       for (const m of cxModels) addOpt(cxg, "codex", m.id || m, m.label || m.id || m);
       rescueSel.appendChild(cxg);
     }
+    if (harnessReady(cat, "cursor")) {
+      const cu = harnesses.cursor || {};
+      const cug = el("optgroup", { label: "Cursor Agent" });
+      if (!cu.logged_in) {
+        const opt = el("option", { value: "" }, "(Cursor sin login — ve a Modelos)");
+        opt.disabled = true;
+        cug.appendChild(opt);
+      }
+      for (const m of (cu.models || [])) addOpt(cug, "cursor", m.id || m, m.label || m.id || m);
+      if (!(cu.models || []).length && cu.logged_in) {
+        const opt = el("option", { value: "" }, "(sin modelos — refresca el catálogo)");
+        opt.disabled = true;
+        cug.appendChild(opt);
+      }
+      rescueSel.appendChild(cug);
+    }
     const want = defaultRescueId(primaryH);
     const wantRef = want ? rescueRef(primaryH, want) : "";
     const hit = wantRef && [...rescueSel.options].find((o) => o.value === wantRef);
@@ -3194,7 +3238,9 @@ async function renderLanzar(view, gen) {
   const harnessHint = el("span", { class: "hint" }, "OpenCode enruta Grok/ChatGPT/gateway/local. Codex CLI usa tu suscripción ChatGPT. Claude Code usa tu login de Claude.ai (claude auth login en el host).");
   const setHarnessHint = () => {
     if (!harnessSel.value) {
-      harnessHint.textContent = "Instala OpenCode, Claude Code o Codex en el host y pulsa Refrescar catálogo en Modelos. Lanzar solo lista los que hay.";
+      harnessHint.textContent = "Instala OpenCode, Claude Code, Codex o Cursor Agent en el host y pulsa Refrescar catálogo en Modelos. Lanzar solo lista los que hay.";
+    } else if (harnessSel.value === "cursor") {
+      harnessHint.textContent = "Cursor Agent corre en el mismo contenedor. Cada turno puede seguir la sesión; un corte de conciencia abre otra desde RESUME.md. Los modelos son los de tu cuenta Cursor.";
     } else if (harnessSel.value === "codex") {
       harnessHint.textContent = "Codex exec no tiene --continue: cada turno es stateless y vive del disco (STATE.md, RECAP.md, engagement.json).";
     } else if (harnessSel.value === "claude") {
@@ -3905,6 +3951,7 @@ async function renderCuentas(view, gen) {
   view.innerHTML = "";
   const cx = (cat.harnesses && cat.harnesses.codex) || {};
   const clh = (cat.harnesses && cat.harnesses.claude) || {};
+  const cu = (cat.harnesses && cat.harnesses.cursor) || {};
   view.appendChild(el("div", { class: "page-head" }, el("div", {}, el("h1", {}, "Modelos"),
     el("p", { class: "sub" }, "Suscripciones, API keys y endpoints. Si un harness está ausente, instálalo en el host y refresca: Lanzar solo lista los que hay."))));
   view.appendChild(el("div", { class: "toolbar" },
@@ -3915,6 +3962,7 @@ async function renderCuentas(view, gen) {
   const hs = el("div", { class: "acc-section" });
   hs.appendChild(el("div", { class: "section-title" }, el("h2", {}, "Harnesses")));
   const hgrid = el("div", { class: "providers" });
+  const cuAvail = !!(cu.available || cu.binary);
   const cxAvail = !!(cx.available || cx.binary);
   const ocAvail = !!(cat.opencode || (cat.harnesses && cat.harnesses.opencode && (cat.harnesses.opencode.available || cat.harnesses.opencode.binary)));
   hgrid.appendChild(el("div", { class: "prov" },
@@ -3928,6 +3976,12 @@ async function renderCuentas(view, gen) {
     el("div", { class: "model-chips" }, ...(clh.models || []).map((m) => el("span", { class: "chip", title: m.id || "" }, m.label || m.id || m))),
     el("div", { class: "mono-small" }, clh.logged_in ? `modo ${clh.auth_mode || "subscription"}` : (clh.expired ? "El refresh de esta máquina ya no vale. Pulsa Login y termina el navegador; un access de 8 h caducado no es esto." : (clh.available ? "Binario listo. Login de suscripción Claude.ai." : "No encuentro ~/.local/bin/claude. Luego: curl -fsSL https://claude.ai/install.sh | bash  · Refresca el catálogo."))),
     harnessAuthButtons("claude", clh),
+  ));
+  hgrid.appendChild(el("div", { class: "prov" },
+    el("div", { class: "p-head" }, el("span", { class: "p-name" }, "Cursor Agent"), el("span", { class: "status-badge " + (cu.logged_in ? "subscription" : (cuAvail ? "logged_out" : "off")) }, cu.logged_in ? "suscripción" : (cuAvail ? "sin login" : "ausente"))),
+    el("div", { class: "model-chips scroll" }, ...(cu.models || []).map((m) => el("span", { class: "chip", title: m.id || "" }, m.label || m.id || m))),
+    el("div", { class: "mono-small" }, cu.logged_in ? `${(cu.models || []).length} modelos de la suscripción` : (cuAvail ? "Login de la cuenta Cursor. El run monta esa sesión." : "No encuentro agent. Luego: curl -fsS https://cursor.com/install | bash  · Refresca el catálogo.")),
+    harnessAuthButtons("cursor", cu),
   ));
   hgrid.appendChild(el("div", { class: "prov" },
     el("div", { class: "p-head" }, el("span", { class: "p-name" }, "OpenCode"), el("span", { class: "status-badge " + (ocAvail ? "on" : "off") }, ocAvail ? "instalado" : "ausente")),
@@ -4058,7 +4112,9 @@ async function openLogin(provider, method, opts) {
     ? "Lista de OpenCode (/connect). Busca o baja con las flechas, Enter para elegir. Unos son OAuth (URL), otros solo API key: el propio flujo lo pide."
     : provider === "claude"
     ? "1) Abre o copia la URL de OAuth. 2) Inicia sesión en Claude.ai. 3) Si te da un código, pégalo abajo y pulsa Enviar. El recuadro negro se puede seleccionar; no hace falta escribir en él."
-    : provider === "codex"
+    : provider === "cursor"
+      ? "Cursor Agent: suscripción. Si sale una URL o un código, ábrelo en tu PC e inicia sesión con tu cuenta. No hace falta una API key."
+      : provider === "codex"
       ? "Codex en un servidor no puede abrir el navegador del host (localhost:1455). Usa el enlace de dispositivo (auth.openai.com/codex/device), inicia sesión en ChatGPT en TU PC e introduce el código que salga en el recuadro. Si ChatGPT no tiene «device code» activado, en el host: codex login --device-auth"
       : provider === "xai"
     ? "OpenCode / xAI: SuperGrok. Copia la URL o el device-code, aprueba en el navegador, pega aquí lo que pida."

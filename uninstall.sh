@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Quita Aegis de este host: UI, leftover, unidad, imagen runner y el árbol.
-# No toca Docker Engine ni OpenCode / Claude Code / Codex.
+# No toca Docker Engine ni los CLI: OpenCode, Claude Code, Codex, Cursor Agent.
+# Tampoco la sesión de Cursor (~/.config/cursor): es el login, como ~/.claude o ~/.codex.
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -93,4 +94,4 @@ cd /
 if [[ -n "$ROOT" && "$ROOT" != "/" && -d "$ROOT" ]]; then
   rm -rf "$ROOT"
 fi
-printf 'Aegis: listo. Docker Engine y los CLI del host siguen.\n'
+printf 'Aegis: listo. Docker Engine y los CLI del host siguen (OpenCode, Claude Code, Codex, Cursor Agent).\n'

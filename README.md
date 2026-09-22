@@ -4,7 +4,7 @@
 
 Aegis se ejecuta en un servidor propio y reúne en una interfaz web la configuración, el seguimiento y la documentación de una auditoría. Cada ejecución utiliza un agente dentro de un contenedor Docker efímero. En el host, una capa de supervisión denominada **conciencia** revisa su progreso y registra sus decisiones.
 
-El proyecto está en desarrollo. Las pruebas realizadas por el autor cubren **Claude**, **Grok** y, con Cursor Agent, **Kimi K3** y **Opus 5**. La presencia de otros proveedores en la interfaz no implica que estén probados.
+El proyecto está en desarrollo. He probado **Claude**, **Grok** y, con Cursor Agent, **Kimi K3** y **Opus 5**. Que otros proveedores salgan en la interfaz no significa que los haya probado.
 
 > Destinado a investigación y auditorías en sistemas propios o expresamente autorizados. El alcance debe cubrir las actividades realizadas y respetar las condiciones de los laboratorios y proveedores utilizados. Los resultados requieren revisión humana.
 
@@ -95,7 +95,7 @@ El tiempo total hasta disponer del informe incluye también el cierre y su gener
 
 ## Modelos e integraciones
 
-Un *harness* es el cliente que conecta el modelo con su entorno de trabajo. Aegis integra **Claude Code**, **OpenCode**, **Codex CLI** y **Cursor Agent**. Las pruebas funcionales declaradas por el autor se centran en estas familias:
+Un *harness* es el cliente que conecta el modelo con su entorno de trabajo. Aegis integra **Claude Code**, **OpenCode**, **Codex CLI** y **Cursor Agent**. Las pruebas que he hecho se centran en estas familias:
 
 
 | Familia                        | Integración utilizada            | Estado                                          |
@@ -106,9 +106,9 @@ Un *harness* es el cliente que conecta el modelo con su entorno de trabajo. Aegi
 | **Chatgpt**                    | Codex                            | Probado.                                        |
 | **Ollama**                     | Endpoint configurado (OpenCode)  | Probado.                                        |
 | **vLLM**                       | Endpoint configurado (OpenCode)  | Implementado; no probado.                       |
-| **Otros modelos del catálogo** | Según el cliente correspondiente | Sin validación funcional equivalente declarada. |
+| **Otros modelos del catálogo** | Según el cliente correspondiente | No los he validado igual. |
 
-Entre las configuraciones utilizadas en las pruebas figuran Claude Opus 4.8 y Opus 5, Sonnet 4.6, Grok 4.7, 4.6 y 4.3, Kimi K3, ChatGPT 5.5 y, mediante Ollama, Qwen 3.8 27B. Con Cursor Agent esas sesiones mantienen el hilo de trabajo con más continuidad: Opus 5 y Grok 4.7 pueden ceder el turno al relevo en algún momento, y lo hacen menos a menudo que en otros clientes. El catálogo de la interfaz puede mostrar otros modelos (Sonnet 5, Fable 5, Haiku, modelos Codex o gateways). Esas entradas no garantizan disponibilidad ni compatibilidad con todas las combinaciones.
+En las pruebas he usado Claude Opus 4.8 y Opus 5, Sonnet 4.6, Grok 4.7, 4.6 y 4.3, Kimi K3, ChatGPT 5.5 y, mediante Ollama, Qwen 3.8 27B. Con Cursor Agent esas sesiones mantienen el hilo de trabajo con más continuidad: Opus 5 y Grok 4.7 pueden ceder el turno al relevo en algún momento, y lo hacen menos a menudo que en otros clientes. El catálogo de la interfaz puede mostrar otros modelos (Sonnet 5, Fable 5, Haiku, modelos Codex o gateways). Esas entradas no garantizan disponibilidad ni compatibilidad con todas las combinaciones.
 
 Las cuentas, credenciales de API y endpoints se gestionan en **Modelos**. La compatibilidad efectiva depende del modelo, el cliente, la modalidad de acceso, la versión y las condiciones del proveedor. Aegis no incluye una suscripción a servicios de modelos.
 
@@ -127,7 +127,7 @@ Un turno vacío (sin herramientas ni texto) no se trata como salvaguarda. Tras u
 
 ### Límites de cuota, sesión y ritmo
 
-El orquestador lee los avisos del *harness* o de la API. Distingue un tope del **proveedor** de una negativa del modelo, de un corte de turno y de que el agente mencione un rate-limit del objetivo. La detección se basa en mensajes reconocibles; no cubre todas las redacciones de todos los proveedores. Las pruebas declaradas cubren Claude, Grok, Kimi K3 y Cursor Agent.
+El orquestador lee los avisos del *harness* o de la API. Distingue un tope del **proveedor** de una negativa del modelo, de un corte de turno y de que el agente mencione un rate-limit del objetivo. La detección se basa en mensajes reconocibles; no cubre todas las redacciones de todos los proveedores. Lo que he probado cubre Claude, Grok, Kimi K3 y Cursor Agent.
 
 
 | Situación | Qué hace Aegis |
@@ -387,14 +387,14 @@ La destrucción del contenedor retira el entorno de ejecución y conserva los ar
 
 ## Estado y límites actuales
 
-Las pruebas realizadas muestran el funcionamiento de componentes y configuraciones concretas de Claude y Grok. No certifican compatibilidad universal, ausencia de errores ni equivalencia de eficacia con otras herramientas de auditoría.
+Lo que he probado muestra el funcionamiento de componentes y configuraciones concretas de Claude y Grok. No certifica compatibilidad universal, ausencia de errores ni equivalencia de eficacia con otras herramientas de auditoría.
 
 - **Proven** y **suspected** son clasificaciones del sistema y requieren revisión. La presencia de un archivo no demuestra por sí sola que respalde la conclusión.
 - El cierre puede modificar las fichas antes de generar el informe. Si no queda ninguna ficha, puede sintetizarse un resumen a partir del estado persistido.
 - Títulos, severidades, identidades y narrativa deben revisarse antes de compartir el informe, incluso cuando los contadores coincidan.
 - Una pausa del operador, un tope de crédito sin backup o un cierre forzado pueden impedir completar la revisión documental. Una espera de sesión con hora de reset reanuda el mismo run; no es un cierre.
 - Las métricas de tiempo y cuota necesitan interpretarse con su configuración y fase de ejecución. La espera de un tope de sesión no suma al tiempo de trabajo mostrado.
-- Ollama, vLLM y las combinaciones no declaradas como probadas siguen pendientes de validación.
+- Ollama, vLLM y las combinaciones que no he probado siguen pendientes de validación.
 
 ## Desarrollo y contribuciones
 

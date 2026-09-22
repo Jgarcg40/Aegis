@@ -4,7 +4,7 @@
 
 Aegis se ejecuta en un servidor propio y reúne en una interfaz web la configuración, el seguimiento y la documentación de una auditoría. Cada ejecución utiliza un agente dentro de un contenedor Docker efímero. En el host, una capa de supervisión denominada **conciencia** revisa su progreso y registra sus decisiones.
 
-El proyecto está en desarrollo. Se ha probado **Claude**, **Grok** y, con Cursor Agent, **Kimi K3** y **Opus 5**. Que otros proveedores salgan en la interfaz no significa que estén probados.
+El proyecto está en desarrollo. Se usan cuatro harnesses:  **Claude Code**,  **OpenCode**,  **Codex CLI** y  **Cursor Agent**. Funciona con modelos recientes del mercado, tales como **Opus 5**, **Grok 4.7** y **Kimi K3**.
 
 > Destinado a investigación y auditorías en sistemas propios o expresamente autorizados. El alcance debe cubrir las actividades realizadas y respetar las condiciones de los laboratorios y proveedores utilizados. Los resultados requieren revisión humana.
 

@@ -190,8 +190,8 @@ El entorno de referencia es **Ubuntu 24.04 sobre Linux x86_64**, con Python 3.12
 Desde la raíz de una copia del repositorio o del paquete extraído:
 
 ```bash
-bash install.sh --check
-bash install.sh
+./install.sh --check
+./install.sh
 ```
 
 El instalador comprueba el host, instala dependencias, prepara el directorio de datos, configura el servicio de la UI y construye la imagen. OpenCode, Claude Code, Codex CLI y Cursor Agent en el host son opcionales: pregunta por cada uno (Enter = no; `-y` instala los cuatro). Si los instalas después con el instalador oficial, Aegis los detecta al refrescar Modelos; Lanzar solo lista los que hay. Algunas operaciones requieren privilegios administrativos y la construcción puede tardar. El build de la imagen fija el mirror `kali.download` (el redirector geográfico de Kali a veces apunta a un CDN caído) y deja OpenCode en una capa posterior: si ese paso falla, un `docker build` de nuevo reutiliza Kali y no empieza de cero. Los paquetes opcionales que no se instalen quedan en `/opt/aegis/MISSING.txt` dentro de la imagen; no impiden usarla.
@@ -199,13 +199,13 @@ El instalador comprueba el host, instala dependencias, prepara el directorio de 
 
 | Opción                      | Finalidad                                               |
 | --------------------------- | ------------------------------------------------------- |
-| `bash install.sh --check`      | Diagnosticar requisitos sin instalar.                   |
-| `bash install.sh --skip-image` | Preparar el host y dejar la imagen para después.        |
-| `bash install.sh --pack`       | Crear un paquete con las exclusiones del proyecto.      |
-| `bash install.sh -y`           | Instalar sin preguntas, incluidos los cuatro CLIs de host. |
-| `bash install.sh --wipe`       | Parar la UI (incluido un proceso huérfano) y quitar la unidad systemd. |
-| `bash install.sh --wipe-clis`  | Lo anterior y, además, OpenCode, Claude Code y Codex del host. |
-| `bash uninstall.sh`            | Quitar Aegis por completo. Docker Engine y los CLI del host no se tocan. |
+| `./install.sh --check`      | Diagnosticar requisitos sin instalar.                   |
+| `./install.sh --skip-image` | Preparar el host y dejar la imagen para después.        |
+| `./install.sh --pack`       | Crear un paquete con las exclusiones del proyecto.      |
+| `./install.sh -y`           | Instalar sin preguntas, incluidos los cuatro CLIs de host. |
+| `./install.sh --wipe`       | Parar la UI (incluido un proceso huérfano) y quitar la unidad systemd. |
+| `./install.sh --wipe-clis`  | Lo anterior y, además, OpenCode, Claude Code y Codex del host. |
+| `./uninstall.sh`            | Quitar Aegis por completo. Docker Engine y los CLI del host no se tocan. |
 
 
 El paquete (`--pack`) incluye código, el Dockerfile de la imagen de ejecución, el instalador, este README y capturas. No incluye la imagen Docker ya construida. Excluye `tests/`, `evals/`, `labs/`, `data/` (runs, logs, informes, evidencias), `.env`, `.git` y caches. No sustituye una revisión del contenido que se va a publicar.
@@ -224,10 +224,10 @@ El servicio puede mantenerse tras cerrar sesión y reiniciarse con el host cuand
 
 ## Desinstalación
 
-`bash uninstall.sh` para el servicio de la UI **antes** de borrar el árbol (si no, un Python huérfano puede seguir en el puerto 8787 con el directorio ya eliminado). Quita la unidad systemd, la imagen `aegis-runner`, restos en `/tmp/aegis-*`, las líneas de PATH que el instalador añadió a `~/.profile` y `~/.bashrc`, y el directorio del proyecto. No desinstala Docker Engine ni OpenCode, Claude Code, Codex o Cursor Agent.
+`./uninstall.sh` para el servicio de la UI **antes** de borrar el árbol (si no, un Python huérfano puede seguir en el puerto 8787 con el directorio ya eliminado). Quita la unidad systemd, la imagen `aegis-runner`, restos en `/tmp/aegis-*`, las líneas de PATH que el instalador añadió a `~/.profile` y `~/.bashrc`, y el directorio del proyecto. No desinstala Docker Engine ni OpenCode, Claude Code, Codex o Cursor Agent.
 
 ```bash
-cd ~/aegis && bash uninstall.sh
+cd ~/aegis && ./uninstall.sh
 ```
 
 Si el árbol ya no existe y el proceso sigue vivo:

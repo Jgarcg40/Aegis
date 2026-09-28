@@ -4401,6 +4401,7 @@ async function renameRun(runId, current) {
 function miniMarkdown(md) {
   const lines = String(md).split("\n");
   let html = "", inCode = false, listTag = "";
+  let para = [];
   // href: http(s)/mailto/relativo/ancla. Sin comillas (esc() no las escapa). Bloquea javascript:/data:.
   const safeUrl = (u) => {
     const t = String(u).trim();
@@ -4415,8 +4416,12 @@ function miniMarkdown(md) {
       const href = safeUrl(url);
       return href ? `<a href="${href}" target="_blank" rel="noopener">${text}</a>` : text;
     });
+  const flushPara = () => {
+    if (para.length) { html += `<p>${inline(para.join(" "))}</p>`; para = []; }
+  };
   const closeList = () => { if (listTag) { html += `</${listTag}>`; listTag = ""; } };
   const openList = (tag, cls) => {
+    flushPara();
     if (listTag && listTag !== tag) closeList();
     if (!listTag) { html += cls ? `<${tag} class="${cls}">` : `<${tag}>`; listTag = tag; }
   };
@@ -4424,12 +4429,13 @@ function miniMarkdown(md) {
   const cells = (s) => s.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
-    if (raw.startsWith("```")) { if (inCode) { html += "</code></pre>"; inCode = false; } else { closeList(); html += "<pre><code>"; inCode = true; } continue; }
+    if (raw.startsWith("```")) { flushPara(); if (inCode) { html += "</code></pre>"; inCode = false; } else { closeList(); html += "<pre><code>"; inCode = true; } continue; }
     if (inCode) { html += esc(raw) + "\n"; continue; }
-    // blanco no cierra lista (ítems separados por líneas vacías)
-    if (raw.trim() === "") continue;
-    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(raw)) { closeList(); html += "<hr>"; continue; }
+    // Línea en blanco = fin de párrafo (no cierra la lista).
+    if (raw.trim() === "") { flushPara(); continue; }
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(raw)) { flushPara(); closeList(); html += "<hr>"; continue; }
     if (raw.includes("|") && i + 1 < lines.length && isSep(lines[i + 1])) {
+      flushPara();
       closeList();
       const head = cells(raw);
       let t = '<table class="md-table"><thead><tr>' + head.map((h) => `<th>${inline(h)}</th>`).join("") + "</tr></thead><tbody>";
@@ -4443,9 +4449,9 @@ function miniMarkdown(md) {
       continue;
     }
     const h = raw.match(/^(#{1,6})\s+(.*)$/);
-    if (h) { closeList(); html += `<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`; continue; }
+    if (h) { flushPara(); closeList(); html += `<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`; continue; }
     const bq = raw.match(/^\s*>\s?(.*)$/);
-    if (bq) { closeList(); html += `<blockquote>${inline(bq[1])}</blockquote>`; continue; }
+    if (bq) { flushPara(); closeList(); html += `<blockquote>${inline(bq[1])}</blockquote>`; continue; }
     const task = raw.match(/^\s*[-*]\s+\[([ xX])\]\s+(.*)$/);
     if (task) {
       openList("ul", "md-tasks");
@@ -4457,9 +4463,10 @@ function miniMarkdown(md) {
     if (ol) { openList("ol", ""); html += `<li>${inline(ol[1])}</li>`; continue; }
     if (/^\s*[-*]\s+/.test(raw)) { openList("ul", ""); html += `<li>${inline(raw.replace(/^\s*[-*]\s+/, ""))}</li>`; continue; }
     closeList();
-    html += `<p>${inline(raw)}</p>`;
+    para.push(raw.trim());
   }
   if (inCode) html += "</code></pre>";
+  flushPara();
   closeList();
   return html;
 }

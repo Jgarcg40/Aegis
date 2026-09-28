@@ -127,6 +127,14 @@ def apply_agent_close_prose(out_dir: Path) -> bool:
     exec_txt, narr_txt = split_agent_prose(raw)
     if not exec_txt and not narr_txt:
         return False
+    # Un borrador ya pasado por la redacción antigua trae el literal [redactado].
+    # Esas secciones no se copian: se queda la prosa generada desde findings y consola.
+    if "[redactado]" in exec_txt:
+        exec_txt = ""
+    if "[redactado]" in narr_txt:
+        narr_txt = ""
+    if not exec_txt and not narr_txt:
+        return False
     if exec_txt:
         md = _swap_between(md, "## 1. Resumen ejecutivo", "### 1.1 Inventario de hallazgos", exec_txt)
     if narr_txt:
@@ -242,6 +250,16 @@ def _prose_pack(out_dir: Path, findings: list[dict]) -> str:
         lines.append("COMANDOS DEL RUN QUE PARECEN DE EXPLOTACIÓN/LOOT (elige los que SÍ cerraron un eslabón):")
         for c in cmds:
             lines.append(f"- {c}")
+    try:
+        transcript = _console_transcript_md(_console_io(out_dir), budget=14000)
+    except Exception:
+        transcript = ""
+    if transcript.strip():
+        lines.append(
+            "TRANSCRIPT REAL (comando ejecutado → salida observada; es la fuente de "
+            "verdad del paso a paso: cita los comandos y lo que devolvieron, no inventes):"
+        )
+        lines.append(transcript)
     flags_txt = out_dir / "loot" / "flags.txt"
     if flags_txt.is_file():
         try:
@@ -254,10 +272,22 @@ def _prose_pack(out_dir: Path, findings: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _apply_ai_finding_cards(md: str, cards: list) -> str:
-    """Sustituye el cuerpo de cada ficha §4 por el writeup de la IA (deja Evidencia)."""
+def _apply_ai_finding_cards(md: str, cards: list, out_dir: Path | None = None) -> str:
+    """Sustituye el cuerpo de cada ficha §4 por el writeup de la IA (deja Evidencia).
+
+    Conserva el bloque «Reproducción (consola)»: la prosa la escribe la IA, pero los
+    comandos reales con su salida (del transcript) se mantienen para que el hallazgo
+    sea replicable, no solo legible."""
     if not md or not isinstance(cards, list):
         return md
+    fmap: dict[str, dict] = {}
+    if out_dir is not None:
+        try:
+            for f in load_findings(out_dir):
+                if isinstance(f, dict) and f.get("id"):
+                    fmap[str(f["id"])] = f
+        except Exception:
+            fmap = {}
     for card in cards:
         if not isinstance(card, dict):
             continue
@@ -288,10 +318,17 @@ def _apply_ai_finding_cards(md: str, cards: list) -> str:
             continue
         kind_head = "**Qué se capturó.**" if "**Qué se capturó.**" in m.group(2) else "**Qué falló.**"
         cmds_md = "\n".join(f"- `{c}`" for c in cmds[:6]) if cmds else "- _(sin comando distinto del proof)_"
+        repro_md = ""
+        if out_dir is not None and fid in fmap:
+            try:
+                repro_md = _finding_repro_md(_finding_repro(fmap[fid], out_dir, limit=4))
+            except Exception:
+                repro_md = ""
         body = (
             f"{kind_head} {what or '—'}\n\n"
             f"**Prueba.** {proof or '—'}\n\n"
             f"**Comandos clave.**\n\n{cmds_md}\n\n"
+            f"{repro_md}"
             f"**Impacto.** {impact or '—'}\n\n"
             f"**Remediación.** {rem or '—'}\n"
         )
@@ -328,16 +365,16 @@ def polish_report_prose(
         findings = [f for f in findings if not finding_is_draft(f)]
     except Exception:
         pass
-    pack = _redact_text(_prose_pack(out_dir, findings), _secret_values(out_dir, findings))
+    pack = _prose_pack(out_dir, findings)
     if not pack.strip():
         return False
 
     def _invoke(call: Any, **kw: Any) -> tuple[str, str, list]:
         try:
-            raw = call(REPORT_PROSE_SYS, pack[:24_000], out_dir, **kw)
+            raw = call(REPORT_PROSE_SYS, pack[:48_000], out_dir, **kw)
         except TypeError:
             try:
-                raw = call(REPORT_PROSE_SYS, pack[:24_000], out_dir)
+                raw = call(REPORT_PROSE_SYS, pack[:48_000], out_dir)
             except Exception:
                 return "", "", []
         except Exception:
@@ -368,7 +405,7 @@ def polish_report_prose(
         start = "## 3. Narrativa del ataque" if "## 3. Narrativa del ataque" in md else "## 3. Narrativa de red"
         md = _swap_between(md, start, "## 4. Hallazgos demostrados", narr_txt)
     if cards:
-        md = _apply_ai_finding_cards(md, cards)
+        md = _apply_ai_finding_cards(md, cards, out_dir)
     _replace_text(path, md)
     js = out_dir / "report.json"
     if js.is_file() and exec_txt:
@@ -703,8 +740,15 @@ def render_markdown(
     downloads = _extract_downloads(cmds)
     story = _story_clusters(proven, cmds)
     narrative = _narrative(mode, story, out_dir)
-    table = _findings_table(findings)
-    proven_md = "\n\n".join(_finding_audit(f, out_dir, cmds, downloads) for f in proven) or "_Ningún hallazgo demostrado._"
+    # Orden ÚNICO en todo el informe: la secuencia del ataque (entrada → acceso →
+    # escalada → flags), la misma que la narrativa. Antes la tabla y las fichas iban
+    # por severidad y la narrativa por causa: tres órdenes distintos y sensación de
+    # desorden. Los IDs no son monótonos (se asignan al descubrir), así que el orden
+    # legible es el causal, no el numérico.
+    proven_ordered = _causal_finding_order(proven, story)
+    table_findings = proven_ordered + [f for f in findings if f not in proven_ordered]
+    table = _findings_table(table_findings)
+    proven_md = "\n\n".join(_finding_audit(f, out_dir, cmds, downloads) for f in proven_ordered) or "_Ningún hallazgo demostrado._"
     recs = _recommendations(proven, identities=ids)
     anex = _appendix(out_dir, findings)
     toks = stats.get("tokens") or {}
@@ -764,7 +808,7 @@ def render_markdown(
 | Riesgo global | **{risk}** |
 | Hallazgos (defectos / flags / hipótesis) | {len(defects)} / {len(flags)} / {len(suspected)} |
 {acct_row}
-{lead} Se genera al cierre (timeout, cancelación o flags CTF). No se inventa superficie que no esté en findings o evidencia. Las contraseñas no van en este markdown.
+{lead} Se genera al cierre (timeout, cancelación o flags CTF). No se inventa superficie que no esté en findings o evidencia. Contraseñas, hashes y flags van tal cual se obtuvieron.
 
 ## 1. Resumen ejecutivo
 
@@ -779,7 +823,7 @@ def render_markdown(
 - Autorización: engagement autorizado (Aegis).
 - Activos:
 {scope}
-- Nota del operador: {brief.get("operator_note") or "(ninguna)"}
+- Nota del operador: {_operator_note_line(brief.get("operator_note"))}
 - Fuera de alcance: cualquier host no listado, DoS y acciones no cubiertas por el modo {mode}.
 
 ## 3. {sec3_title}
@@ -818,7 +862,7 @@ Rutas relativas a `data/runs/{run_id}/`. Un revisor debe poder repetir el hallaz
 
 {anex}
 """
-    return _redact_text(md, _secret_values(out_dir, findings))
+    return md
 
 
 def _is_empty_finding(f: dict) -> bool:
@@ -1083,7 +1127,7 @@ def _redact_report_file(out_dir: Path, findings: list) -> None:
         raw = path.read_text(encoding="utf-8")
     except OSError:
         return
-    red = _tidy_report_md(_redact_text(raw, _secret_values(out_dir, findings)))
+    red = _tidy_report_md(raw)
     if red != raw:
         _replace_text(path, red)
 
@@ -1115,7 +1159,7 @@ def _identities_for_report(out_dir: Path | None) -> list[dict]:
     try:
         from internal.identities import public_identities
 
-        return public_identities(out_dir)
+        return public_identities(out_dir, secrets=True)
     except Exception:
         return []
 
@@ -1125,8 +1169,7 @@ def _identities_md(identities: list[dict]) -> str:
     if not got:
         return "_Ninguna cuenta persistida en disco._"
     lines = [
-        "Inventario al cierre. Este markdown no incluye secretos; "
-        "el operador los ve pinchando la cuenta en la pestaña Cuentas.",
+        "Inventario al cierre. La contraseña o el hash van en claro cuando constan en el run.",
         "",
     ]
     for it in got:
@@ -1140,7 +1183,10 @@ def _identities_md(identities: list[dict]) -> str:
         via = str(it.get("via") or "—")
         priv = str(it.get("priv") or "user")
         fid = str(it.get("finding") or "—")
-        if it.get("has_secret"):
+        secret = str(it.get("secret") or "").strip()
+        if secret:
+            secret_lab = f"secreto `{secret}`"
+        elif it.get("has_secret"):
             secret_lab = "contraseña **obtenida**"
         else:
             secret_lab = "contraseña **no obtenida** (sesión o sin login)"
@@ -1206,7 +1252,7 @@ def _executive(
     )
     if n_acct:
         bits.append(
-            f"Cuentas comprometidas: **{n_acct}** (detalle en §5; las contraseñas no van en este markdown)."
+            f"Cuentas comprometidas: **{n_acct}** (detalle en §5, con el secreto si consta)."
         )
     bits.append("La historia va en §3; el detalle técnico (prueba, PoC, remediación) en §4.")
     return " ".join(bits)
@@ -1223,6 +1269,24 @@ def _risk_rating(proven: list) -> str:
     if proven:
         return "Bajo"
     return "Indeterminado"
+
+
+def _causal_finding_order(proven: list[dict], story: list[dict]) -> list[dict]:
+    """Hallazgos en la secuencia del ataque: cada eslabón y, colgando de él, sus
+    capturas (flags). Lo no cubierto por la historia se añade al final en su orden."""
+    ordered: list[dict] = []
+    seen: set[int] = set()
+    for cl in story:
+        chain = [cl.get("lead")] + list(cl.get("loot") or [])
+        for f in chain:
+            if isinstance(f, dict) and id(f) not in seen:
+                seen.add(id(f))
+                ordered.append(f)
+    for f in proven:
+        if id(f) not in seen:
+            seen.add(id(f))
+            ordered.append(f)
+    return ordered
 
 
 def _findings_table(findings: list) -> str:
@@ -1537,13 +1601,23 @@ def _finding_audit(f: dict, out_dir: Path, cmds: list[dict] | None = None, downl
     impact = _field_text(f.get("impact"))
     rem = _remediation(f)
     related = _related_commands(f, cmds, limit=4)
-    tools = _tools_used(related, f)
+    repro = _finding_repro(f, out_dir, limit=4)
+    tools = _tools_used(related or [{"argv": r.get("argv")} for r in repro], f)
     tools_md = ", ".join(f"**{name}** ({why})" for name, why in tools.items()) if tools else "las del `proof`"
-    cmds_md = (
-        "\n".join(f"- `{_compact_argv(c.get('argv') or '')}`" for c in related)
-        if related
-        else "- _(sin comando distinto del proof)_"
-    )
+    if repro:
+        seen_fp: set[str] = set()
+        key_cmds: list[str] = []
+        for r in repro:
+            disp = _repro_cmd_display(r.get("argv") or "", limit=200)
+            if disp and disp not in seen_fp:
+                seen_fp.add(disp)
+                key_cmds.append(disp)
+        cmds_md = "\n".join(f"- `{c}`" for c in key_cmds)
+    elif related:
+        cmds_md = "\n".join(f"- `{_compact_argv(c.get('argv') or '')}`" for c in related)
+    else:
+        cmds_md = "- _(sin comando distinto del proof)_"
+    repro_md = _finding_repro_md(repro)
     poc_md = _poc_origin(f, out_dir, related, downloads)
     loot_md = _loot_line(f, out_dir)
     got = impact
@@ -1605,12 +1679,137 @@ def _finding_audit(f: dict, out_dir: Path, cmds: list[dict] | None = None, downl
         f"{what} {explain_out}\n\n"
         f"**Prueba.** {proof_md}\n\n"
         f"**Comandos clave.**\n\n{cmds_md}\n\n"
+        f"{repro_md}"
         f"**Impacto.** {got}\n\n"
         f"**Herramientas.** {tools_md}\n\n"
         f"**PoC / artefactos.** {poc_md}\n\n"
         f"**Remediación.** {rem}\n\n"
         f"**Evidencia.**\n\n{ev_block}\n"
     )
+
+
+_IO_CACHE: dict[str, list[dict]] = {}
+
+
+def _io_for(out_dir: Path) -> list[dict]:
+    key = str(out_dir)
+    hit = _IO_CACHE.get(key)
+    if hit is None:
+        try:
+            hit = _console_io(out_dir)
+        except Exception:
+            hit = []
+        _IO_CACHE[key] = hit
+    return hit
+
+
+def _finding_repro(f: dict, out_dir: Path, *, limit: int = 4) -> list[dict]:
+    """Pasos reales (comando + salida) atribuibles a un finding, desde el transcript.
+
+    Empareja por palabras clave del hallazgo en el comando o en la salida, por
+    ventana temporal alrededor del timestamp del finding, y por señal de impacto
+    (uid=, flag, denied…) en la salida. Cubre el caso de fichas pobres: el paso a
+    paso sale de la consola aunque el modelo no lo escribiera.
+    """
+    io = _io_for(out_dir)
+    if not io:
+        return []
+    keys = [k for k in _finding_keys(f) if len(k) >= 3]
+    fts = _parse_ts(str(f.get("timestamp") or ""))
+    is_privesc = bool(re.search(r"root|privesc|escalad|sudo|suid", _finding_blob(f)))
+    is_flag = str(f.get("kind") or "").lower() == "flag"
+    scored: list[tuple[int, dict]] = []
+    for e in io:
+        if not _transcript_step_ok(e):
+            continue
+        argv = str(e.get("argv") or "")
+        low = argv.lower()
+        blob = (str(e.get("stdout") or "") + "\n" + str(e.get("stderr") or "")).lower()
+        # Diagnóstico puro (conectividad, listar procesos): no es el eslabón.
+        if re.match(r"^\s*(ps|pgrep|ss|netstat|ping)\b", low) and not _TRANSCRIPT_SIGNAL.search(blob):
+            continue
+        kw_argv = 0
+        kw_out = 0
+        for k in keys:
+            if k in low:
+                kw_argv += 3 if len(k) > 5 else 2
+            elif k in blob:
+                kw_out += 2 if len(k) > 5 else 1
+        strong = False
+        if is_privesc and re.search(r"uid=0\(root\)|gid=0\(root\)", blob):
+            strong = True
+        if is_flag and re.search(r"user\.txt|root\.txt|flag", low + blob):
+            strong = True
+        # Solo entra si el COMANDO cita el hallazgo (evita el ruido que solo caía en
+        # la misma ventana temporal) o si la salida prueba el impacto (root/flag).
+        if kw_argv <= 0 and not strong:
+            continue
+        score = kw_argv * 2 + kw_out
+        if fts:
+            ets = _parse_ts(str(e.get("ts") or ""))
+            if ets and abs((fts - ets).total_seconds()) <= 1500:
+                score += 1
+        if strong:
+            score += 4
+        if _TRANSCRIPT_SIGNAL.search(blob):
+            score += 1
+        scored.append((score, e))
+    if not scored:
+        return []
+    scored.sort(key=lambda x: (-x[0], str(x[1].get("ts") or "")))
+    out: list[dict] = []
+    seen: set[str] = set()
+    for _, e in scored[: limit * 4]:
+        fp = _command_fingerprint(e.get("argv") or "")
+        if fp in seen:
+            continue
+        seen.add(fp)
+        out.append(e)
+        if len(out) >= limit:
+            break
+    out.sort(key=lambda e: str(e.get("ts") or ""))
+    return out
+
+
+def _repro_cmd_display(argv: str, limit: int = 360) -> str:
+    """Comando para el bloque de reproducción: legible y acotado.
+
+    Desenvuelve el patrón de cola de trabajos (cat > job.sh << 'EOF' … EOF) y el
+    preámbulo del script para que el gesto real (el exploit) salga primero. Los
+    heredoc de Python largos se cortan dejando el gesto reconocible."""
+    one = " ".join(str(argv or "").split())
+    # cat > /tmp/…/jNNN.sh << 'EOF' #!/bin/bash set +e <cuerpo> [EOF] → <cuerpo>
+    m = re.match(r"cat\s*>\s*\S+\s*<<\s*'?\w+'?\s+(.*)", one)
+    if m:
+        one = m.group(1)
+        one = re.sub(r"^#!\S*\s*(bash|sh)?\s*", "", one)
+        one = re.sub(r"^set\s+[-+]\w+\s*", "", one)
+        one = re.sub(r"\bEOF\s*$", "", one).strip()
+    one = re.sub(r"<<'?PY'?.*?PY\b", "<<'PY' … PY", one)
+    one = re.sub(r"<<'?EOF'?.*?\bEOF\b", "<<'EOF' … EOF", one)
+    if len(one) > limit:
+        one = one[: limit - 1] + "…"
+    return one
+
+
+def _finding_repro_md(entries: list[dict], *, budget: int = 2600) -> str:
+    if not entries:
+        return ""
+    blocks: list[str] = []
+    used = 0
+    for e in entries:
+        head = "$ " + _repro_cmd_display(e.get("argv") or "")
+        ex = e.get("exit")
+        if ex not in (0, None, ""):
+            head += f"   # exit {ex}"
+        body = _trim_output(e.get("stdout") or e.get("stderr") or "", head=8, tail=4, width=160)
+        block = head + ("\n" + body if body.strip() else "")
+        if used + len(block) > budget and blocks:
+            break
+        blocks.append(block)
+        used += len(block) + 2
+    joined = "\n\n".join(blocks)
+    return f"**Reproducción (consola).**\n\n```\n{joined}\n```\n\n"
 
 
 def _pick_evidence(f: dict) -> list[str]:
@@ -2111,6 +2310,213 @@ def _load_console_commands(out_dir: Path) -> list[dict]:
     return rows
 
 
+def _find_shell_tool_call(node: Any) -> dict | None:
+    """Localiza shellToolCall en un evento de consola de Cursor (anidado)."""
+    if isinstance(node, dict):
+        sc = node.get("shellToolCall")
+        if isinstance(sc, dict):
+            return sc
+        for v in node.values():
+            found = _find_shell_tool_call(v)
+            if found is not None:
+                return found
+    elif isinstance(node, list):
+        for item in node:
+            found = _find_shell_tool_call(item)
+            if found is not None:
+                return found
+    return None
+
+
+def _console_io(out_dir: Path, *, max_entries: int = 500) -> list[dict]:
+    """Comando + salida real desde console.log, para los tres harness.
+
+    A diferencia de _load_console_commands (solo argv), aquí se captura la salida
+    (stdout/stderr) para reconstruir el paso a paso: qué se ejecutó y qué se vio.
+    """
+    path = out_dir / "console.log"
+    if not path.is_file():
+        return []
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    rows: list[dict] = []
+    pending: dict[str, dict] = {}  # claude: tool_use id → {ts, argv}
+    for raw in lines:
+        i = raw.find("{")
+        if i < 0:
+            continue
+        try:
+            ev = json.loads(raw[i:])
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(ev, dict):
+            continue
+        ts = str(ev.get("timestamp") or ev.get("ts") or ev.get("time") or "")
+        # Cursor: shellToolCall.result.success (comando ya ejecutado, con salida).
+        sc = _find_shell_tool_call(ev)
+        if sc is not None:
+            res = sc.get("result") if isinstance(sc.get("result"), dict) else {}
+            succ = res.get("success") if isinstance(res.get("success"), dict) else None
+            if succ:
+                cmd = str(succ.get("command") or "").strip()
+                if cmd:
+                    rows.append(
+                        {
+                            "ts": ts,
+                            "argv": cmd,
+                            "exit": succ.get("exitCode"),
+                            "stdout": str(succ.get("stdout") or ""),
+                            "stderr": str(succ.get("stderr") or ""),
+                        }
+                    )
+            continue
+        part = ev.get("part") if isinstance(ev.get("part"), dict) else {}
+        st = part.get("state") if isinstance(part.get("state"), dict) else {}
+        # OpenCode: tool_use/tool completado con salida en state.output/metadata.
+        if ev.get("type") in {"tool_use", "tool"} or part.get("type") in {"tool", "tool-invocation"}:
+            if str(st.get("status") or "completed") != "completed":
+                continue
+            inp = st.get("input") if isinstance(st.get("input"), dict) else {}
+            cmd = str(inp.get("command") or inp.get("cmd") or "").strip()
+            if not cmd:
+                continue
+            out = st.get("output")
+            if isinstance(out, dict):
+                out = out.get("output") or out.get("stdout") or out.get("text") or ""
+            meta = st.get("metadata") if isinstance(st.get("metadata"), dict) else {}
+            if not out:
+                out = meta.get("output") or meta.get("stdout") or ""
+            rows.append(
+                {
+                    "ts": ts,
+                    "argv": cmd,
+                    "exit": meta.get("exit"),
+                    "stdout": str(out or ""),
+                    "stderr": str(meta.get("stderr") or ""),
+                }
+            )
+            continue
+        # Claude: assistant Bash tool_use, luego user tool_result con la salida.
+        if ev.get("type") == "assistant":
+            msg = ev.get("message") if isinstance(ev.get("message"), dict) else {}
+            for block in msg.get("content") or []:
+                if not isinstance(block, dict) or block.get("type") != "tool_use":
+                    continue
+                if str(block.get("name") or "") not in {"Bash", "bash"}:
+                    continue
+                cin = block.get("input") if isinstance(block.get("input"), dict) else {}
+                cmd = str(cin.get("command") or cin.get("cmd") or "").strip()
+                bid = str(block.get("id") or "")
+                if cmd and bid:
+                    pending[bid] = {"ts": ts, "argv": cmd}
+        elif ev.get("type") == "user":
+            msg = ev.get("message") if isinstance(ev.get("message"), dict) else {}
+            for block in msg.get("content") or []:
+                if not isinstance(block, dict) or block.get("type") != "tool_result":
+                    continue
+                base = pending.pop(str(block.get("tool_use_id") or ""), None)
+                if not base:
+                    continue
+                content = block.get("content")
+                if isinstance(content, list):
+                    content = "\n".join(
+                        str(c.get("text") or "") for c in content if isinstance(c, dict)
+                    )
+                base.update(
+                    {
+                        "exit": None,
+                        "stdout": str(content or ""),
+                        "stderr": "",
+                        "err": bool(block.get("is_error")),
+                    }
+                )
+                rows.append(base)
+    if len(rows) > max_entries:
+        rows = rows[-max_entries:]
+    return rows
+
+
+_TRANSCRIPT_SIGNAL = re.compile(
+    r"uid=|gid=|\broot\b|passwd|password|contrase|flag|htb\{|shell|sudo|www-data|"
+    r"cve-\d|/bin/|denied|permission|token|secret|private key|BEGIN |whoami|"
+    r"authenticated|logged in|welcome|success|dumped|hash",
+    re.I,
+)
+
+
+def _transcript_step_ok(entry: dict) -> bool:
+    """Deja pasar pasos con sustancia: herramienta real o salida con señal."""
+    argv = str(entry.get("argv") or "")
+    if not argv or _is_noise_argv(argv):
+        return False
+    if _DOC_WRITE.search(argv):
+        return False
+    blob = f"{entry.get('stdout') or ''}\n{entry.get('stderr') or ''}"
+    parts = re.split(r"&&|\|\||;|\|", argv)
+    non_noise = False
+    for p in parts:
+        toks = re.findall(r"[A-Za-z0-9_./-]+", p)
+        if not toks:
+            continue
+        name = Path(toks[0]).name.lower()
+        if name and name not in _NOISE_TOOLS:
+            non_noise = True
+            break
+    return non_noise or bool(_TRANSCRIPT_SIGNAL.search(blob))
+
+
+def _trim_output(text: str, *, head: int = 20, tail: int = 8, width: int = 200) -> str:
+    """Recorta una salida larga a cabeza+cola, por líneas, para el transcript."""
+    lines = [ln[:width] for ln in (text or "").replace("\r", "").split("\n")]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    if len(lines) <= head + tail:
+        return "\n".join(lines)
+    omitted = len(lines) - head - tail
+    return "\n".join(lines[:head] + [f"… [+{omitted} líneas] …"] + lines[-tail:])
+
+
+def _console_transcript_md(entries: list[dict], *, budget: int = 14000) -> str:
+    """Guion comando → salida legible, acotado por presupuesto de caracteres."""
+    out: list[str] = []
+    used = 0
+    for e in entries:
+        if not _transcript_step_ok(e):
+            continue
+        argv = " ".join(str(e.get("argv") or "").split())
+        ex = e.get("exit")
+        head = f"$ {argv}"
+        if ex not in (0, None, ""):
+            head += f"   (exit {ex})"
+        body = _trim_output(e.get("stdout") or e.get("stderr") or "")
+        block = head + ("\n" + body if body.strip() else "")
+        if used + len(block) > budget:
+            break
+        out.append(block)
+        used += len(block) + 2
+    return "\n\n".join(out)
+
+
+def _operator_note_line(note: Any, *, limit: int = 240) -> str:
+    """Nota del operador en UNA línea. Evita que un note largo (a veces un informe
+    pegado entero) rompa §2 en un muro de fragmentos. El texto completo sigue en
+    brief.json; aquí solo va un resumen legible."""
+    txt = " ".join(str(note or "").split())
+    if not txt:
+        return "(ninguna)"
+    if len(txt) <= limit:
+        return txt
+    cut = txt[:limit]
+    sp = cut.rfind(" ")
+    if sp > 80:
+        cut = cut[:sp]
+    return cut + "… (nota completa en el brief)"
+
+
 def _looks_download(argv: str, url: str) -> bool:
     a = argv.lower()
     u = url.lower()
@@ -2192,6 +2598,30 @@ def _finding_keys(f: dict) -> list[str]:
     if fid:
         keys.append(fid.lower())
         keys.append(fid.replace("-", "").lower())
+    # Rutas, endpoints y tokens distintivos del hallazgo: fijan el comando de
+    # EXPLOTACIÓN (que suele citar la ruta/endpoint) frente al de verificación.
+    blob2 = " ".join(
+        str(f.get(k) or "")
+        for k in ("title", "asset", "summary", "explain", "proof", "reproduction")
+    )
+    for m in re.finditer(r"/[A-Za-z0-9_][A-Za-z0-9_./-]{3,}", blob2):
+        seg = m.group(0).strip("/.")
+        tail = [p for p in seg.split("/") if len(p) >= 4]
+        for p in tail[-2:]:
+            keys.append(p.lower())
+        if "/" in seg:
+            keys.append("/".join(seg.split("/")[-2:]).lower())
+    for m in re.finditer(r"\b[a-z]{2,}[A-Z][A-Za-z]{2,}\b", blob2):  # elementIds, loadContext
+        keys.append(m.group(0).lower())
+    low2 = blob2.lower()
+    for tok in (
+        "arpspoof", "tcpdump", "conditions/render", "elementids", "miles/login",
+        "cpresources", "lpadmin", "lpstat", "lpoptions", "cupsd", "ipp", "file://",
+        "twig", "ssti", "xrdp", "freerdp", "chisel", "socat", "sshpass",
+        "evil-winrm", "authorized_keys", "/dev/lxd/sock", "uid_map", "sudo -s",
+    ):
+        if tok in low2:
+            keys.append(tok)
     # paths in evidence
     for rel in f.get("evidence") or []:
         name = Path(str(rel)).name.lower()

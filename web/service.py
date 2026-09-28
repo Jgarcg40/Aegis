@@ -1544,18 +1544,6 @@ class RunManager:
             out = mark_reviewed_findings(root, out)
         except Exception:
             pass
-        try:
-            from internal.report import _redact_text, _secret_values
-
-            secrets = _secret_values(root, out)
-            for it in out:
-                if it.get("draft"):
-                    continue
-                for k in ("title", "summary", "explain", "proof", "reproduction", "impact"):
-                    if it.get(k):
-                        it[k] = _redact_text(str(it[k]), secrets)
-        except Exception:
-            pass
         return out
 
     def watch_run(self, run_id: str) -> dict:

@@ -1433,10 +1433,12 @@ class RunManager:
                     changed = True
                 if changed:
                     stats["tokens"] = toks
-            if not int(stats.get("commands_count") or 0):
-                n = len(self._commands_from_console(root))
-                if n:
-                    stats["commands_count"] = n
+            # La barra usa este número. La pestaña lista lo mismo: comandos
+            # completos de la consola, ya colapsados. stats.json cuenta otra
+            # cosa (cada estado del tool y el cmd_log) y no coincide.
+            shown = self._collapse_commands(self._commands_from_console(root) or [])
+            if shown:
+                stats["commands_count"] = len(shown)
             if not int(stats.get("tools_count") or 0):
                 n = len(self._tools_from_console(root))
                 if n:

@@ -1991,7 +1991,10 @@ class RunManager:
         seen: set[str] = set()
         for ev, part, st, inp in self._iter_console_tools(root) or []:
             cmd = str(inp.get("command") or inp.get("cmd") or "")
-            if not cmd or cmd in _NOISE_ARGV or _is_noise_argv(cmd):
+            # La consola pinta cada shell. El filtro de «ruido» (ls, which,
+            # export) es del informe: si se aplica aquí, la barra y la pestaña
+            # cuentan menos comandos de los que se ven.
+            if not cmd or cmd in _NOISE_ARGV:
                 continue
             key = cmd[:240]
             status = str(st.get("status") or "")

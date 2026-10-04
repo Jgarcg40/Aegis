@@ -117,7 +117,16 @@ def _row_text(cls: str, text: str) -> str:
 
 
 def _ts(obj: dict[str, Any], fallback: str = "") -> str:
-    raw = obj.get("timestamp") or obj.get("ts") or fallback or ""
+    # Cursor stream-json trae timestamp_ms, no timestamp. Sin eso la UI
+    # reutiliza la hora anterior y un turno entero sale con el mismo reloj.
+    raw = (
+        obj.get("timestamp")
+        or obj.get("timestamp_ms")
+        or obj.get("ts")
+        or obj.get("time")
+        or fallback
+        or ""
+    )
     return str(raw) if raw else ""
 
 

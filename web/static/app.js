@@ -1546,7 +1546,8 @@ function consoleLegend() {
 }
 
 function evTime(ev) {
-  return normalizeConsoleTs(ev && (ev.timestamp || ev.ts || ev.time));
+  if (!ev) return "";
+  return normalizeConsoleTs(ev.timestamp || ev.timestamp_ms || ev.ts || ev.time);
 }
 
 function claudeToolDetail(inp) {

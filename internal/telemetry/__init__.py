@@ -751,6 +751,10 @@ class Sidecar:
             key = f"{row['dst_ip']}:{row['dst_port']}:{row['proto']}:{row['pid']}"
             if key in self._seen_conns:
                 continue
+            # SYN sin sesión = sonda de escaneo. No cuenta como destino.
+            if str(row.get("result") or "") == "syn":
+                self._seen_conns.add(key)
+                continue
             self._seen_conns.add(key)
             self.stats.net_destinations.add(f"{row['dst_ip']}:{row['dst_port']}")
             if row["dst_port"]:

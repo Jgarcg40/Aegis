@@ -108,6 +108,12 @@ _CURL_PAYLOAD_RE = re.compile(
 _HOST_HDR_RE = re.compile(r"(?i)(?:-H|--header)\s+[\"']?Host:\s*([A-Za-z0-9._-]+)")
 _SCOPE_RANK = {"internal": 0, "external": 1, "local": 2}
 _NOISE_ARGV = {"", "{}", "[]", "None", "null", "()", "none"}
+def _event_ts(ev: dict) -> str:
+    return _normalize_ts(
+        ev.get("timestamp") or ev.get("timestamp_ms") or ev.get("time") or ev.get("ts")
+    )
+
+
 def _normalize_ts(ts: Any) -> str:
     """OpenCode manda epoch ms (int); events.jsonl usa ISO. La UI espera ISO o ms."""
     if ts is None or ts == "":
@@ -1990,7 +1996,7 @@ class RunManager:
             if key in seen and status in {"pending", "running", "in_progress"}:
                 continue
             seen.add(key)
-            ts = _normalize_ts(ev.get("timestamp") or ev.get("time") or ev.get("ts"))
+            ts = _event_ts(ev)
             exit_val = st.get("exit")
             if exit_val in (None, ""):
                 exit_val = status
@@ -2013,7 +2019,7 @@ class RunManager:
             if status in {"pending", "running"} and self._empty_args(inp):
                 continue
             out.append({
-                "ts": _normalize_ts(ev.get("timestamp") or ev.get("time") or ev.get("ts")),
+                "ts": _event_ts(ev),
                 "name": name,
                 "args": inp or {},
                 "exit": status,
@@ -2247,6 +2253,10 @@ class RunManager:
     def _accumulate_net(self, net: dict, p: dict, ts: str, typ: str, targets: list[str]) -> None:
         dst_ip = str(p.get("dst_ip") or "")
         if self._skip_net_host(dst_ip):
+            return
+        # Un barrido deja miles de SYN-SENT (puertos cerrados). Destino = sesión
+        # que llegó a establecerse, no cada sonda.
+        if str(p.get("result") or "") == "syn":
             return
         dst_port = p.get("dst_port") or 0
         proto = str(p.get("proto") or "tcp")
